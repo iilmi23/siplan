@@ -35,13 +35,13 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 Then run build:
 ```powershell
-cd c:\laragon\www\simsr
+cd c:\laragon\www\siplan
 npm run build
 ```
 
 Or gunakan Command Prompt (cmd.exe) langsung:
 ```cmd
-cd c:\laragon\www\simsr
+cd c:\laragon\www\siplan
 npx vite build
 ```
 

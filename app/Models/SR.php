@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\UploadBatch;
 
 class SR extends Model
 {
@@ -12,12 +13,12 @@ class SR extends Model
         'customer',
         'carline_id',
         'assy_id',
+        'upload_batch_id',
         'source_file',
         'upload_batch',
         'sheet_index',
         'sheet_name',
         'part_number',
-        'assy_no',
         'qty',
         'total',
         'delivery_date',
@@ -49,6 +50,11 @@ class SR extends Model
     public function assy()
     {
         return $this->belongsTo(Assy::class, 'assy_id', 'id');
+    }
+
+    public function uploadBatch()
+    {
+        return $this->belongsTo(UploadBatch::class, 'upload_batch_id', 'id');
     }
 
     public function getSummaryData()

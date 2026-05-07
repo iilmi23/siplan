@@ -105,10 +105,7 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
 
         foreach ($grouped as $partNumber => $items) {
             $index++;
-            // Use assy_no if available (from first item), otherwise use part_number
-            $firstItem = $items->first();
-            $assyNo = ($firstItem->assy_no && $firstItem->assy_no !== '') ? $firstItem->assy_no : $partNumber;
-            $dataRow = [$index, $assyNo, 'QTY'];
+            $dataRow = [$index, $partNumber, 'QTY'];
 
             foreach ($periods as $period) {
                 if ($period['week'] === 'TOT') {
@@ -126,7 +123,7 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
                     $key   = implode('|', [$period['etd_raw'], $period['eta_raw'], $period['week']]);
                     $total = 0;
                     foreach ($items as $item) {
-                        $itemKey = implode('|', [$item->etd, $item->eta, $item->week]);
+                        $itemKey = implode('|', [$item->etd, $item->eta, $this->normalizeWeek($item->week)]);
                         if ($itemKey === $key) {
                             $total += (int)($item->qty ?? 0);
                         }
@@ -155,7 +152,7 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
                 $key   = implode('|', [$period['etd_raw'], $period['eta_raw'], $period['week']]);
                 $total = 0;
                 foreach ($this->data as $item) {
-                    $itemKey = implode('|', [$item->etd, $item->eta, $item->week]);
+                    $itemKey = implode('|', [$item->etd, $item->eta, $this->normalizeWeek($item->week)]);
                     if ($itemKey === $key) {
                         $total += (int)($item->qty ?? 0);
                     }
@@ -412,12 +409,13 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
         foreach ($this->data as $item) {
             $type  = $item->order_type ?? 'FORECAST';
             $month = $item->month ?? date('Y-m', strtotime($item->eta));
-            $key   = implode('|', [$item->etd, $item->eta, $item->week]);
+            $week  = $this->normalizeWeek($item->week);
+            $key   = implode('|', [$item->etd, $item->eta, $week]);
 
             $byTypeMonth[$type][$month][$key] = [
                 'etd'     => date('n/j', strtotime($item->etd)),
                 'eta'     => date('n/j', strtotime($item->eta)),
-                'week'    => $item->week,
+                'week'    => $week,
                 'etd_raw' => $item->etd,
                 'eta_raw' => $item->eta,
                 'month'   => $month,
@@ -449,7 +447,7 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
                 while ($weekCount < 5) {
                     $weekNum = $weekCount + 1;
                     $result[] = [
-                        'week'    => "{$weekNum}W",
+                        'week'    => $weekNum,
                         'month'   => $month,
                         'type'    => $type,
                         'etd'     => '',
@@ -482,6 +480,27 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
      * Returns array of groups, each group spanning one (type, month) block:
      * ['type' => 'FIRM', 'month' => '2025-02', 'startCol' => 4, 'endCol' => 9]
      */
+    private function normalizeWeek($week)
+    {
+        if ($week === null || $week === '') {
+            return '';
+        }
+
+        if ($week === 'TOT') {
+            return 'TOT';
+        }
+
+        if (is_numeric($week)) {
+            return (int) $week;
+        }
+
+        if (preg_match('/\d+/', (string) $week, $matches)) {
+            return (int) $matches[0];
+        }
+
+        return $week;
+    }
+
     protected function buildMonthGroups(array $periods): array
     {
         $groups      = [];

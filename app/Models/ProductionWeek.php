@@ -16,11 +16,13 @@ class ProductionWeek extends Model
         'month_name',
         'week_no',
         'week_start',
+        'end_date',
         'num_weeks',
     ];
 
     protected $casts = [
         'week_start' => 'date',
+        'end_date' => 'date',
     ];
 
     // ─── Relasi ───────────────────────────────────────────────
@@ -47,8 +49,7 @@ class ProductionWeek extends Model
      */
     public function containsDate($date)
     {
-        $nextWeek = ProductionWeek::where('customer_id', $this->customer_id)
-            ->where('year', $this->year)
+        $nextWeek = ProductionWeek::where('year', $this->year)
             ->where('week_start', '>', $this->week_start)
             ->orderBy('week_start')
             ->first();
@@ -65,7 +66,7 @@ class ProductionWeek extends Model
      */
     public function scopeForCustomer($query, $customerId)
     {
-        return $query->where('customer_id', $customerId);
+        return $customerId ? $query->where('customer_id', $customerId) : $query;
     }
 
     /**
@@ -80,7 +81,7 @@ class ProductionWeek extends Model
      * Find the production week that contains the given ETD date.
      * The week is determined by the latest week_start less than or equal to the date.
      */
-    public static function findByDate(int $customerId, $date): ?self
+    public static function findByDate($customerId, $date): ?self
     {
         if (empty($date)) {
             return null;
@@ -88,9 +89,29 @@ class ProductionWeek extends Model
 
         $date = Carbon::parse($date)->startOfDay();
 
-        return self::where('customer_id', $customerId)
-            ->where('week_start', '<=', $date)
-            ->orderBy('week_start', 'desc')
-            ->first();
+        $queries = [];
+
+        if (!empty($customerId)) {
+            $queries[] = self::where('customer_id', $customerId);
+        }
+
+        $queries[] = self::whereNull('customer_id');
+
+        foreach ($queries as $query) {
+            $week = $query
+                ->where('week_start', '<=', $date)
+                ->where(function ($q) use ($date) {
+                    $q->whereNull('end_date')
+                        ->orWhere('end_date', '>=', $date);
+                })
+                ->orderBy('week_start', 'desc')
+                ->first();
+
+            if ($week) {
+                return $week;
+            }
+        }
+
+        return null;
     }
 }

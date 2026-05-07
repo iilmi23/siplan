@@ -9,7 +9,7 @@ export default function Create() {
         email: '',
         password: '',
         password_confirmation: '',
-        role: 'ppc_staff',
+        role: 'ppc',
     });
 
     const [showPassword, setShowPassword] = useState(false);
@@ -21,15 +21,13 @@ export default function Create() {
     };
 
     const roles = [
-        { value: 'ppc_staff', label: 'PPC Staff' },
-        { value: 'ppc_supervisor', label: 'PPC Supervisor' },
-        { value: 'ppc_manager', label: 'PPC Manager' },
+        { value: 'ppc', label: 'PPC' },
         { value: 'admin', label: 'Admin' },
     ];
 
     return (
         <AdminLayout title="Create User">
-            <Head title="Create User | SIMSR" />
+            <Head title="Create User | SIPLAN" />
 
             <div className="min-h-screen bg-gray-50/40 pt-2 pb-8 px-5 md:px-8">
                 {/* Header */}

@@ -1,6 +1,6 @@
 import AdminLayout from "@/Layouts/AdminLayout";
+import Breadcrumb from "@/Components/Admin/Breadcrumb";
 import { Link, useForm } from "@inertiajs/react";
-import { ChevronRightIcon } from "@heroicons/react/24/outline";
 
 export default function Edit({ customer }) {
     const { data, setData, put, processing, errors } = useForm({
@@ -18,23 +18,7 @@ export default function Edit({ customer }) {
         <AdminLayout>
             <div className="min-h-screen bg-gray-50/40 pt-2 pb-8 px-5 md:px-8 font-sans">
 
-                {/* Breadcrumb */}
-                <div className="flex items-center gap-2 mb-4 text-sm">
-                    <span className="text-gray-600 hover:text-[#1D6F42] transition-colors cursor-pointer">Menu</span>
-                    <ChevronRightIcon className="w-4 h-4 text-gray-400" />
-                    <Link
-                        href="/customers"
-                        className="text-gray-600 hover:text-[#1D6F42] transition-colors"
-                    >
-                        Customers
-                    </Link>
-
-                    <ChevronRightIcon className="w-4 h-4 text-gray-400" />
-
-                    <span className="text-gray-800 font-medium">
-                        Edit
-                    </span>
-                </div>
+                <Breadcrumb items={[{ label: "Masters" }, { label: "Customers", href: "/customers" }, { label: "Edit" }]} />
 
                 {/* Card - Full Width */}
                 <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">

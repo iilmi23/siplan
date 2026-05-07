@@ -1,6 +1,6 @@
 import AdminLayout from "@/Layouts/AdminLayout";
+import Breadcrumb from "@/Components/Admin/Breadcrumb";
 import { Link, useForm } from "@inertiajs/react";
-import { ChevronRightIcon } from "@heroicons/react/24/outline";
 
 export default function Create({ customer }) {
 
@@ -19,26 +19,7 @@ export default function Create({ customer }) {
 
             <div className="min-h-screen bg-gray-50/40 pt-2 pb-8 px-5 md:px-8">
 
-                {/* Breadcrumb */}
-                <div className="flex items-center gap-2 mb-4 text-sm">
-
-                    <Link href="/customers" className="text-gray-600 hover:text-[#1D6F42]">
-                        Customers
-                    </Link>
-
-                    <ChevronRightIcon className="w-4 text-gray-400" />
-
-                    <Link
-                        href={`/customers/${customer.id}/ports`}
-                        className="text-gray-600 hover:text-[#1D6F42]">
-                        Ports
-                    </Link>
-
-                    <ChevronRightIcon className="w-4 text-gray-400" />
-
-                    <span>Create</span>
-
-                </div>
+                <Breadcrumb items={[{ label: "Masters" }, { label: "Ports", href: `/customers/${customer.id}/ports` }, { label: "Create" }]} />
 
                 <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
 

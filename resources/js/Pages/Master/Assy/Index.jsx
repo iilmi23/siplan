@@ -1,696 +1,715 @@
-import { useState } from "react";
-import { Link, router, usePage } from "@inertiajs/react";
-import {
-    ChevronRightIcon,
-    PencilIcon,
-    TrashIcon,
-    PlusIcon,
-    MagnifyingGlassIcon,
-    EyeIcon,
-    DocumentArrowUpIcon,
-    XMarkIcon,
-    DocumentArrowDownIcon,
-} from "@heroicons/react/24/outline";
 import AdminLayout from "@/Layouts/AdminLayout";
+import Breadcrumb from "@/Components/Admin/Breadcrumb";
+import { Link, router, usePage } from "@inertiajs/react";
+import { useEffect, useMemo, useState } from "react";
+import {
+    ArrowPathIcon,
+    CheckCircleIcon,
+    ChevronLeftIcon,
+    ChevronRightIcon as ChevronNextIcon,
+    DocumentArrowUpIcon,
+    ExclamationTriangleIcon,
+    EyeIcon,
+    FunnelIcon,
+    MagnifyingGlassIcon,
+    PencilIcon,
+    PlusIcon,
+    TableCellsIcon,
+    TrashIcon,
+    XMarkIcon,
+} from "@heroicons/react/24/outline";
 
-export default function Index({ assy, carlines, filters }) {
+const normalizeStatusFilter = (value) => {
+    if (value === true) return "1";
+    if (value === false) return "0";
+    if (value === 1) return "1";
+    if (value === 0) return "0";
+    return value ?? "";
+};
+
+const normalizeIdFilter = (value) => {
+    if (value === null || value === undefined) return "";
+    return String(value);
+};
+
+const formatDecimal = (value) => {
+    if (value === null || value === undefined || value === "") return "-";
+
+    const number = Number(value);
+    if (!Number.isFinite(number)) return value;
+
+    return number.toLocaleString("en-US", {
+        maximumFractionDigits: 4,
+    });
+};
+
+const formatInteger = (value) => {
+    if (value === null || value === undefined || value === "") return "-";
+
+    const number = Number(value);
+    if (!Number.isFinite(number)) return value;
+
+    return number.toLocaleString("en-US");
+};
+
+const getVisiblePages = (currentPage, lastPage) => {
+    const maxVisible = 5;
+    if (!lastPage || lastPage <= maxVisible) {
+        return Array.from({ length: lastPage || 0 }, (_, index) => index + 1);
+    }
+
+    if (currentPage <= 3) {
+        return Array.from({ length: maxVisible }, (_, index) => index + 1);
+    }
+
+    if (currentPage >= lastPage - 2) {
+        return Array.from({ length: maxVisible }, (_, index) => lastPage - maxVisible + index + 1);
+    }
+
+    return Array.from({ length: maxVisible }, (_, index) => currentPage - 2 + index);
+};
+
+export default function Index({ assy, carlines = [], filters = {}, flash: propFlash }) {
+    const { flash: sharedFlash } = usePage().props;
+    const flash = propFlash || sharedFlash || {};
+
     const [search, setSearch] = useState(filters?.search || "");
-    const [carlineId, setCarlineId] = useState(filters?.carline_id || "");
-    const [isActive, setIsActive] = useState(filters?.is_active || "");
-    const [showUploadModal, setShowUploadModal] = useState(false);
-    const [uploadFile, setUploadFile] = useState(null);
-    const [uploading, setUploading] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState(0);
-    const [selectedCarlineForUpload, setSelectedCarlineForUpload] = useState("");
-    const [downloadingTemplate, setDownloadingTemplate] = useState(false);
-    const { flash } = usePage().props;
+    const [carlineId, setCarlineId] = useState(normalizeIdFilter(filters?.carline_id));
+    const [isActive, setIsActive] = useState(normalizeStatusFilter(filters?.is_active));
+    const [filterOpen, setFilterOpen] = useState(
+        Boolean(filters?.carline_id || normalizeStatusFilter(filters?.is_active) !== "")
+    );
+    const [showAlert, setShowAlert] = useState(false);
+    const [alertType, setAlertType] = useState("success");
+    const [alertMessage, setAlertMessage] = useState("");
+    const [deleteTarget, setDeleteTarget] = useState(null);
+    const [isProcessing, setIsProcessing] = useState(false);
 
-    const handleSearch = (e) => {
-        e.preventDefault();
-        router.get(
-            window.route("assy.index"),
-            {
-                search: search || undefined,
-                carline_id: carlineId || undefined,
-                is_active: isActive || undefined,
-            },
-            { preserveState: true, replace: true }
-        );
+    const assyRows = assy?.data ?? [];
+    const hasActiveFilters = Boolean(search || carlineId || isActive !== "");
+
+    const currentPage = assy?.current_page ?? 1;
+    const lastPage = assy?.last_page ?? 1;
+    const visiblePages = useMemo(
+        () => getVisiblePages(currentPage, lastPage),
+        [currentPage, lastPage]
+    );
+
+    useEffect(() => {
+        setSearch(filters?.search || "");
+        setCarlineId(normalizeIdFilter(filters?.carline_id));
+        setIsActive(normalizeStatusFilter(filters?.is_active));
+    }, [filters?.search, filters?.carline_id, filters?.is_active]);
+
+    useEffect(() => {
+        const successMessage = flash?.success || flash?.message;
+        const warningMessage = flash?.warning;
+        const errorMessage = flash?.error;
+        const message = successMessage || warningMessage || errorMessage;
+
+        if (!message) return;
+
+        setAlertType(successMessage ? "success" : warningMessage ? "warning" : "error");
+        setAlertMessage(message);
+        setShowAlert(true);
+
+        const timer = setTimeout(() => setShowAlert(false), 4000);
+        return () => clearTimeout(timer);
+    }, [flash?.success, flash?.message, flash?.warning, flash?.error]);
+
+    const getQuery = (page) => ({
+        search: search.trim() || undefined,
+        carline_id: carlineId || undefined,
+        is_active: isActive === "" ? undefined : isActive,
+        page: page || undefined,
+    });
+
+    const applyFilters = (event) => {
+        event?.preventDefault();
+
+        router.get(window.route("assy.index"), getQuery(), {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
     };
 
-    const handleReset = () => {
+    const clearFilters = () => {
         setSearch("");
         setCarlineId("");
         setIsActive("");
-        router.get(window.route("assy.index"), {}, { preserveState: true });
-    };
 
-    const handleDelete = (id, assyNumber) => {
-        if (confirm(`Yakin ingin menghapus assy "${assyNumber}"?`)) {
-            router.delete(window.route("assy.destroy", id));
-        }
-    };
-
-    const handleToggleStatus = (id, currentStatus) => {
-        router.patch(window.route("assy.toggle-status", id), {
-            is_active: !currentStatus,
-        });
-    };
-
-    const handleFileChange = (e) => {
-        const file = e.target.files[0];
-        if (file && (file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || file.type === "application/vnd.ms-excel")) {
-            setUploadFile(file);
-        } else {
-            alert("Please upload a valid Excel file (.xlsx or .xls)");
-            e.target.value = "";
-        }
-    };
-
-    const handleUpload = () => {
-        if (!uploadFile) {
-            alert("Please select a file first");
-            return;
-        }
-
-        if (!selectedCarlineForUpload) {
-            alert("Please select Car Line first");
-            return;
-        }
-
-        setUploading(true);
-        setUploadProgress(0);
-
-        const formData = new FormData();
-        formData.append("excel_file", uploadFile);
-        formData.append("carline_id", selectedCarlineForUpload);
-
-        const interval = setInterval(() => {
-            setUploadProgress(prev => {
-                if (prev >= 90) {
-                    clearInterval(interval);
-                    return 90;
-                }
-                return prev + 10;
-            });
-        }, 200);
-
-        router.post(window.route("assy.upload"), formData, {
+        router.get(window.route("assy.index"), {}, {
             preserveState: true,
             preserveScroll: true,
-            onSuccess: () => {
-                clearInterval(interval);
-                setUploadProgress(100);
-                setTimeout(() => {
-                    setShowUploadModal(false);
-                    setUploadFile(null);
-                    setSelectedCarlineForUpload("");
-                    setUploadProgress(0);
-                    setUploading(false);
-                }, 500);
-            },
-            onError: (errors) => {
-                clearInterval(interval);
-                setUploading(false);
-                setUploadProgress(0);
-                console.error("Upload error:", errors);
-                alert("Upload failed: " + (errors.message || "Please check your file and try again"));
-            },
-            onFinish: () => {
-                clearInterval(interval);
-                setUploading(false);
-            }
+            replace: true,
         });
     };
 
-    const downloadTemplate = async () => {
-        if (!selectedCarlineForUpload) {
-            alert("Please select Car Line first before downloading template");
-            return;
-        }
+    const visitPage = (page) => {
+        if (!page || page < 1 || page > lastPage || page === currentPage) return;
 
-        setDownloadingTemplate(true);
-        
-        try {
-            // Try to get the template URL
-            const templateUrl = window.route("assy.download-template", {
-                carline_id: selectedCarlineForUpload
-            });
-            
-            // Create a hidden anchor element to trigger download
-            const link = document.createElement('a');
-            link.href = templateUrl;
-            link.download = `assy_template_carline_${selectedCarlineForUpload}.xlsx`;
-            
-            // Add CSRF token for security
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
-            if (csrfToken) {
-                link.setAttribute('data-csrf', csrfToken);
-            }
-            
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            setTimeout(() => {
-                setDownloadingTemplate(false);
-            }, 1000);
-            
-        } catch (error) {
-            console.error("Download error:", error);
-            alert("Failed to download template. Please try again or contact administrator.");
-            setDownloadingTemplate(false);
-        }
+        router.get(window.route("assy.index"), getQuery(page), {
+            preserveState: true,
+            preserveScroll: true,
+        });
     };
 
-    // Alternative method using fetch for better error handling
-    const downloadTemplateWithFetch = async () => {
-        if (!selectedCarlineForUpload) {
-            alert("Please select Car Line first before downloading template");
-            return;
-        }
+    const handleToggleStatus = (assyItem) => {
+        setIsProcessing(true);
 
-        setDownloadingTemplate(true);
-        
-        try {
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
-            const response = await fetch(window.route("assy.download-template", {
-                carline_id: selectedCarlineForUpload
-            }), {
-                method: 'GET',
-                headers: {
-                    'X-CSRF-TOKEN': csrfToken,
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `assy_template_carline_${selectedCarlineForUpload}.xlsx`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
-            
-        } catch (error) {
-            console.error("Download error:", error);
-            alert("Failed to download template. Please check if the template file exists or contact administrator.");
-        } finally {
-            setDownloadingTemplate(false);
-        }
+        router.patch(window.route("assy.toggle-status", assyItem.id), {}, {
+            preserveScroll: true,
+            onFinish: () => setIsProcessing(false),
+        });
     };
 
-    // Create manual template if server route doesn't exist
-    const createManualTemplate = () => {
-        if (!selectedCarlineForUpload) {
-            alert("Please select Car Line first");
-            return;
-        }
+    const confirmDelete = () => {
+        if (!deleteTarget) return;
 
-        // Create sample data for template
-        const sampleData = [
-            ['part_number', 'assy_code', 'level', 'umh', 'std_pack', 'type', 'description'],
-            ['ABC-001', 'ASM001', '1', '1.5', '10', 'A', 'Sample Assy 1'],
-            ['ABC-002', 'ASM002', '2', '2.0', '20', 'B', 'Sample Assy 2'],
-            ['ABC-003', 'ASM003', '1', '1.8', '15', 'A', 'Sample Assy 3'],
-        ];
-
-        // Convert to CSV
-        const csvContent = sampleData.map(row => row.join(',')).join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.href = url;
-        link.setAttribute('download', `assy_template_carline_${selectedCarlineForUpload}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        setIsProcessing(true);
+        router.delete(window.route("assy.destroy", deleteTarget.id), {
+            preserveScroll: true,
+            onSuccess: () => setDeleteTarget(null),
+            onError: () => {
+                setAlertType("error");
+                setAlertMessage("Gagal menghapus assy. Silakan coba lagi.");
+                setShowAlert(true);
+            },
+            onFinish: () => setIsProcessing(false),
+        });
     };
+
+    const handleSyncSirep = () => {
+        setIsProcessing(true);
+
+        router.post(window.route("assy.sync-sirep"), {}, {
+            preserveScroll: true,
+            onFinish: () => setIsProcessing(false),
+        });
+    };
+
+    const firstRecord = assy?.from ?? (assyRows.length > 0 ? (currentPage - 1) * (assy?.per_page ?? assyRows.length) + 1 : 0);
+    const lastRecord = assy?.to ?? Math.min(currentPage * (assy?.per_page ?? assyRows.length), assy?.total ?? assyRows.length);
 
     return (
         <AdminLayout>
             <div className="min-h-screen bg-gray-50/40 pt-2 pb-8 px-5 md:px-8 font-sans">
+                <Breadcrumb items={[{ label: "Masters" }, { label: "Assy" }]} />
 
-                {flash?.success && (
-                    <div className="mb-4 p-4 bg-green-50 border-l-4 border-green-500 text-green-700 rounded-r-xl animate-slideDown">
-                        <div className="flex items-center gap-2">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            {flash.success}
+                {showAlert && alertMessage && (
+                    <div className="mb-5 animate-slideDown">
+                        <div
+                            className={`flex items-start gap-3 bg-white p-4 rounded-xl shadow-sm border border-gray-200 border-l-4 ${
+                                alertType === "success"
+                                    ? "border-l-[#1D6F42]"
+                                    : alertType === "warning"
+                                        ? "border-l-amber-500"
+                                        : "border-l-red-500"
+                            }`}
+                        >
+                            <div
+                                className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                                    alertType === "success"
+                                        ? "bg-green-50 text-[#1D6F42]"
+                                        : alertType === "warning"
+                                            ? "bg-amber-50 text-amber-600"
+                                            : "bg-red-50 text-red-600"
+                                }`}
+                            >
+                                {alertType === "success" ? (
+                                    <CheckCircleIcon className="w-5 h-5" />
+                                ) : (
+                                    <ExclamationTriangleIcon className="w-5 h-5" />
+                                )}
+                            </div>
+                            <p className="flex-1 text-sm font-medium text-gray-800 whitespace-pre-line">
+                                {alertMessage}
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => setShowAlert(false)}
+                                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                                aria-label="Close alert"
+                            >
+                                <XMarkIcon className="w-4 h-4" />
+                            </button>
                         </div>
                     </div>
                 )}
-                {flash?.error && (
-                    <div className="mb-4 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-r-xl animate-slideDown">
-                        <div className="flex items-center gap-2">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            {flash.error}
+
+                {isProcessing && !deleteTarget && (
+                    <div className="fixed inset-0 z-50 bg-black/20 flex items-center justify-center">
+                        <div className="bg-white rounded-xl px-6 py-5 shadow-xl flex items-center gap-3">
+                            <div className="w-5 h-5 border-2 border-[#1D6F42] border-t-transparent rounded-full animate-spin" />
+                            <span className="text-sm font-medium text-gray-700">Processing...</span>
                         </div>
                     </div>
                 )}
-
-                <div className="flex items-center gap-2 mb-4 text-sm">
-                    <span className="text-gray-600">Master</span>
-                    <ChevronRightIcon className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-800 font-medium">Assy</span>
-                </div>
 
                 <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-
-                    <div className="p-6 pb-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                        <div>
-                            <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">
-                                Assy Master
-                            </h1>
-                            <p className="text-sm text-gray-500 mt-1">
-                                Data master assy untuk mengisi SPP.
-                            </p>
-                        </div>
-                        <div className="flex gap-3">
-                            {/* <Link
-                                href={window.route("assy.importPage")}
-                                className="inline-flex items-center justify-center gap-2 h-11 px-5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition"
-                            >
-                                <DocumentArrowUpIcon className="w-4 h-4" />
-                                Import Excel
-                            </Link> */}
-                            <button
-                                onClick={() => setShowUploadModal(true)}
-                                className="inline-flex items-center justify-center gap-2 h-11 px-5 bg-gray-600 text-white text-sm font-medium rounded-xl hover:bg-gray-700 transition"
-                            >
-                                <DocumentArrowDownIcon className="w-4 h-4" />
-                                Upload Excel
-                            </button>
-                            <Link
-                                href={window.route("assy.create")}
-                                className="inline-flex items-center justify-center gap-2 h-11 px-5 bg-[#1D6F42] text-white text-sm font-medium rounded-xl hover:bg-[#185c38] transition"
-                            >
-                                <PlusIcon className="w-4 h-4" />
-                                Add Assy
-                            </Link>
-                        </div>
-                    </div>
-
-                    <div className="p-6 pb-0">
-                        <form onSubmit={handleSearch} className="flex flex-wrap gap-3">
-                            <div className="relative flex-1 min-w-[200px]">
-                                <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                <input
-                                    type="text"
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                    placeholder="Cari assy number, assy code..."
-                                    className="w-full h-11 pl-9 pr-4 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1D6F42]/20 focus:border-[#1D6F42]"
-                                />
+                    <div className="p-6 pb-4 border-b border-gray-100">
+                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                            <div>
+                                <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">
+                                    Assy Master
+                                </h1>
+                                <p className="text-sm text-gray-500 mt-1">
+                                    Kelola part number, assy code, car line, UMH, dan status master assy.
+                                </p>
                             </div>
 
-                            <select
-                                value={carlineId}
-                                onChange={(e) => setCarlineId(e.target.value)}
-                                className="h-11 px-4 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1D6F42]/20 focus:border-[#1D6F42] bg-white"
-                            >
-                                <option value="">All Car Lines</option>
-                                {carlines?.map((cl) => (
-                                    <option key={cl.id} value={cl.id}>
-                                        {cl.code} {cl.description ? `- ${cl.description}` : ""}
-                                    </option>
-                                ))}
-                            </select>
-
-                            <select
-                                value={isActive}
-                                onChange={(e) => setIsActive(e.target.value)}
-                                className="h-11 px-4 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1D6F42]/20 focus:border-[#1D6F42] bg-white"
-                            >
-                                <option value="">All Status</option>
-                                <option value="1">Active</option>
-                                <option value="0">Inactive</option>
-                            </select>
-
-                            <button
-                                type="submit"
-                                className="h-11 px-5 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition"
-                            >
-                                Cari
-                            </button>
-
-                            {(search || carlineId || isActive) && (
+                            <div className="flex flex-col sm:flex-row gap-3">
                                 <button
                                     type="button"
-                                    onClick={handleReset}
-                                    className="h-11 px-5 text-gray-500 text-sm hover:text-gray-700 transition"
+                                    onClick={handleSyncSirep}
+                                    disabled={isProcessing}
+                                    className="inline-flex items-center justify-center gap-2 h-11 px-5 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 hover:text-[#1D6F42] hover:border-[#1D6F42]/30 transition-all disabled:opacity-60"
                                 >
-                                    Reset
+                                    <ArrowPathIcon className={`w-5 h-5 ${isProcessing ? "animate-spin" : ""}`} />
+                                    Sync SIREP
                                 </button>
-                            )}
-                        </form>
+                                <Link
+                                    href={window.route("assy.importPage")}
+                                    className="inline-flex items-center justify-center gap-2 h-11 px-5 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 hover:text-[#1D6F42] hover:border-[#1D6F42]/30 transition-all"
+                                >
+                                    <DocumentArrowUpIcon className="w-5 h-5" />
+                                    Import Excel
+                                </Link>
+                                <Link
+                                    href={window.route("assy.create")}
+                                    className="inline-flex items-center justify-center gap-2 h-11 px-5 bg-[#1D6F42] text-white text-sm font-medium rounded-xl hover:bg-[#185c38] transition-all shadow-sm active:scale-[0.98]"
+                                >
+                                    <PlusIcon className="w-5 h-5" />
+                                    Add Assy
+                                </Link>
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="p-6">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b border-gray-200">
-                                        <th className="text-left py-3 px-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">No</th>
-                                        <th className="text-left py-3 px-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Assy Number</th>
-                                        <th className="text-left py-3 px-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Assy Code</th>
-                                        <th className="text-left py-3 px-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Level</th>
-                                        <th className="text-left py-3 px-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Car Line</th>
-                                        <th className="text-left py-3 px-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
-                                        <th className="text-right py-3 px-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">UMH</th>
-                                        <th className="text-right py-3 px-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Std Pack</th>
-                                        <th className="text-center py-3 px-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                                        <th className="text-center py-3 px-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {assy?.data?.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={10} className="text-center py-12 text-gray-400">
-                                                Tidak ada data ditemukan.
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        assy?.data?.map((assyItem, index) => (
-                                            <tr key={assyItem.id} className="border-b border-gray-100 hover:bg-gray-50 transition">
-                                                <td className="py-3 px-2 text-gray-500">
-                                                    {(assy.current_page - 1) * assy.per_page + index + 1}
-                                                </td>
-                                                <td className="py-3 px-2">
-                                                    <span className="font-mono font-medium text-gray-900">
-                                                        {assyItem.part_number}
-                                                    </span>
-                                                </td>
-                                                <td className="py-3 px-2 text-gray-700">{assyItem.assy_code}</td>
-                                                <td className="py-3 px-2 text-gray-600">{assyItem.level}</td>
-                                                <td className="py-3 px-2">
-                                                    {assyItem.carline ? (
-                                                        <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-blue-50 text-blue-700">
-                                                            {assyItem.carline.code}
-                                                        </span>
-                                                    ) : "-"}
-                                                </td>
-                                                <td className="py-3 px-2 text-gray-600">{assyItem.type || "-"}</td>
-                                                <td className="py-3 px-2 text-right font-mono text-gray-700">
-                                                    {parseFloat(assyItem.umh).toFixed(4)}
-                                                </td>
-                                                <td className="py-3 px-2 text-right text-gray-700">{assyItem.std_pack}</td>
-                                                <td className="py-3 px-2 text-center">
-                                                    <button
-                                                        onClick={() => handleToggleStatus(assyItem.id, assyItem.is_active)}
-                                                        className={`px-3 py-1 text-xs font-medium rounded-full transition ${
-                                                            assyItem.is_active
-                                                                ? "bg-green-100 text-green-700 hover:bg-green-200"
-                                                                : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                                                        }`}
-                                                    >
-                                                        {assyItem.is_active ? "Active" : "Inactive"}
-                                                    </button>
-                                                </td>
-                                                <td className="py-3 px-2 text-center">
-                                                    <div className="flex items-center justify-center gap-1">
-                                                        <Link
-                                                            href={window.route("assy.show", assyItem.id)}
-                                                            className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition"
-                                                            title="Detail"
-                                                        >
-                                                            <EyeIcon className="w-4 h-4" />
-                                                        </Link>
-                                                        <Link
-                                                            href={window.route("assy.edit", assyItem.id)}
-                                                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                                                            title="Edit"
-                                                        >
-                                                            <PencilIcon className="w-4 h-4" />
-                                                        </Link>
-                                                        <button
-                                                            onClick={() => handleDelete(assyItem.id, assyItem.part_number)}
-                                                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-                                                            title="Hapus"
-                                                        >
-                                                            <TrashIcon className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))
+                    <div className="px-6 py-4 border-b border-gray-100">
+                        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+                            <form onSubmit={applyFilters} className="flex-1 max-w-xl">
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                        <MagnifyingGlassIcon className="w-5 h-5 text-gray-400" />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        value={search}
+                                        onChange={(event) => setSearch(event.target.value)}
+                                        className="w-full h-11 pl-10 pr-24 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1D6F42]/20 focus:border-[#1D6F42] transition-all"
+                                        placeholder="Search part number, assy code, or level..."
+                                    />
+                                    {search && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSearch("")}
+                                            className="absolute inset-y-0 right-16 pr-2 flex items-center text-gray-400 hover:text-gray-600"
+                                            aria-label="Clear search"
+                                        >
+                                            <XMarkIcon className="w-4 h-4" />
+                                        </button>
                                     )}
-                                </tbody>
-                            </table>
+                                    <button
+                                        type="submit"
+                                        className="absolute inset-y-1 right-1 px-4 rounded-lg bg-[#1D6F42] text-white text-sm font-medium hover:bg-[#185c38] transition-colors"
+                                    >
+                                        Search
+                                    </button>
+                                </div>
+                            </form>
+
+                            <div className="flex flex-wrap items-center gap-3 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setFilterOpen((open) => !open)}
+                                    className={`inline-flex items-center justify-center gap-2 h-11 px-4 border rounded-xl text-sm font-medium transition-all ${
+                                        filterOpen || carlineId || isActive !== ""
+                                            ? "bg-[#1D6F42]/10 border-[#1D6F42]/30 text-[#1D6F42]"
+                                            : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+                                    }`}
+                                >
+                                    <FunnelIcon className="w-5 h-5" />
+                                    Filter
+                                </button>
+
+                                {hasActiveFilters && (
+                                    <button
+                                        type="button"
+                                        onClick={clearFilters}
+                                        className="inline-flex items-center justify-center gap-2 h-11 px-4 bg-white border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 hover:text-gray-900 transition-all"
+                                    >
+                                        <ArrowPathIcon className="w-5 h-5" />
+                                        Reset
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
-                        {/* Pagination */}
-                        {assy?.last_page > 1 && (
-                            <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200">
-                                <p className="text-sm text-gray-500">
-                                    Menampilkan {(assy.current_page - 1) * assy.per_page + 1}–
-                                    {Math.min(assy.current_page * assy.per_page, assy.total)} dari {assy.total} data
-                                </p>
-                                <div className="flex gap-1">
+                        {filterOpen && (
+                            <div className="mt-4 bg-gray-50 p-4 rounded-xl border border-gray-200 animate-slideDown">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h3 className="text-sm font-semibold text-gray-800">Filter By</h3>
                                     <button
-                                        onClick={() => router.get(window.route("assy.index"), {
-                                            page: assy.current_page - 1,
-                                            search: filters.search,
-                                            carline_id: filters.carline_id,
-                                            is_active: filters.is_active,
-                                        }, { preserveState: true })}
-                                        disabled={assy.current_page === 1}
-                                        className={`w-9 h-9 rounded-lg text-sm font-medium transition ${
-                                            assy.current_page === 1
-                                                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                                        }`}
+                                        type="button"
+                                        onClick={clearFilters}
+                                        className="text-xs font-medium text-[#1D6F42] hover:underline"
                                     >
-                                        ←
+                                        Reset
                                     </button>
-                                    {Array.from({ length: Math.min(5, assy.last_page) }, (_, i) => {
-                                        let page;
-                                        if (assy.last_page <= 5) {
-                                            page = i + 1;
-                                        } else if (assy.current_page <= 3) {
-                                            page = i + 1;
-                                        } else if (assy.current_page >= assy.last_page - 2) {
-                                            page = assy.last_page - 4 + i;
-                                        } else {
-                                            page = assy.current_page - 2 + i;
-                                        }
-                                        return (
-                                            <button
-                                                key={page}
-                                                onClick={() => router.get(window.route("assy.index"), {
-                                                    page,
-                                                    search: filters.search,
-                                                    carline_id: filters.carline_id,
-                                                    is_active: filters.is_active,
-                                                }, { preserveState: true })}
-                                                className={`w-9 h-9 rounded-lg text-sm font-medium transition ${
-                                                    page === assy.current_page
-                                                        ? "bg-[#1D6F42] text-white"
-                                                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                                                }`}
-                                            >
-                                                {page}
-                                            </button>
-                                        );
-                                    })}
-                                    <button
-                                        onClick={() => router.get(window.route("assy.index"), {
-                                            page: assy.current_page + 1,
-                                            search: filters.search,
-                                            carline_id: filters.carline_id,
-                                            is_active: filters.is_active,
-                                        }, { preserveState: true })}
-                                        disabled={assy.current_page === assy.last_page}
-                                        className={`w-9 h-9 rounded-lg text-sm font-medium transition ${
-                                            assy.current_page === assy.last_page
-                                                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                                        }`}
-                                    >
-                                        →
-                                    </button>
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_180px_auto] md:items-end">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                                            Car Line
+                                        </label>
+                                        <select
+                                            value={carlineId}
+                                            onChange={(event) => setCarlineId(event.target.value)}
+                                            className="w-full h-10 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1D6F42]/20 focus:border-[#1D6F42]"
+                                        >
+                                            <option value="">All Car Lines</option>
+                                            {carlines.map((carline) => (
+                                                <option key={carline.id} value={carline.id}>
+                                                    {carline.code}
+                                                    {carline.description
+                                                        ? ` - ${carline.description}`
+                                                        : carline.name
+                                                            ? ` - ${carline.name}`
+                                                            : ""}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                                            Status
+                                        </label>
+                                        <select
+                                            value={isActive}
+                                            onChange={(event) => setIsActive(event.target.value)}
+                                            className="w-full h-10 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1D6F42]/20 focus:border-[#1D6F42]"
+                                        >
+                                            <option value="">All Status</option>
+                                            <option value="1">Active</option>
+                                            <option value="0">Inactive</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={applyFilters}
+                                            className="h-10 px-4 bg-[#1D6F42] text-white text-sm font-medium rounded-lg hover:bg-[#185c38] transition-colors"
+                                        >
+                                            Apply
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={clearFilters}
+                                            className="h-10 px-4 bg-white text-gray-600 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                                        >
+                                            Reset
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         )}
                     </div>
-                </div>
-            </div>
 
-            {/* Upload Modal - Improved with better template download */}
-            {showUploadModal && (
-                <div className="fixed inset-0 z-50 overflow-y-auto">
-                    <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-                        <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => !uploading && setShowUploadModal(false)}></div>
-                        <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
-                        <div className="inline-block overflow-hidden text-left align-bottom transition-all transform bg-white rounded-2xl shadow-xl sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-                            <div className="px-6 pt-6 pb-4">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-lg font-semibold text-gray-900">Upload Excel File</h3>
-                                    {!uploading && (
-                                        <button onClick={() => setShowUploadModal(false)} className="text-gray-400 hover:text-gray-500">
-                                            <XMarkIcon className="w-5 h-5" />
-                                        </button>
-                                    )}
-                                </div>
-                                <div className="mt-2">
-                                    <div className="mb-4">
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Pilih Car Line <span className="text-red-500">*</span>
-                                        </label>
-                                        <select
-                                            value={selectedCarlineForUpload}
-                                            onChange={(e) => setSelectedCarlineForUpload(e.target.value)}
-                                            disabled={uploading}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1D6F42]/20 focus:border-[#1D6F42]"
+                    <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-gray-50">
+                        <table className="w-full min-w-[1380px] table-fixed">
+                            <colgroup>
+                                <col className="w-[64px]" />
+                                <col className="w-[210px]" />
+                                <col className="w-[150px]" />
+                                <col className="w-[96px]" />
+                                <col className="w-[160px]" />
+                                <col className="w-[120px]" />
+                                <col className="w-[120px]" />
+                                <col className="w-[120px]" />
+                                <col className="w-[130px]" />
+                                <col className="w-[240px]" />
+                            </colgroup>
+                            <thead>
+                                <tr className="bg-gray-100/80 border-b border-gray-200">
+                                    <th className="px-5 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                                        #
+                                    </th>
+                                    <th className="px-5 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                                        Part Number
+                                    </th>
+                                    <th className="px-5 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                                        Assy Code
+                                    </th>
+                                    <th className="px-5 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                                        Level
+                                    </th>
+                                    <th className="px-5 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                                        Car Line
+                                    </th>
+                                    <th className="px-5 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                                        Type
+                                    </th>
+                                    <th className="px-5 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                                        UMH
+                                    </th>
+                                    <th className="px-5 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                                        Std Pack
+                                    </th>
+                                    <th className="px-5 py-4 text-center text-xs font-bold text-gray-700 uppercase tracking-wider border-r border-gray-200">
+                                        Status
+                                    </th>
+                                    <th className="px-5 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                                        Actions
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {assyRows.length > 0 ? (
+                                    assyRows.map((assyItem, index) => {
+                                        const rowNumber = (currentPage - 1) * (assy?.per_page ?? assyRows.length) + index + 1;
+                                        const isActiveRow = Boolean(assyItem.is_active);
+                                        const carlineLabel = assyItem.carline?.code || "-";
+
+                                        return (
+                                            <tr key={assyItem.id} className="hover:bg-gray-50/80 transition-colors">
+                                                <td className="px-5 py-4 text-sm text-gray-500 font-medium tabular-nums border-r border-gray-100">
+                                                    {rowNumber.toString().padStart(2, "0")}
+                                                </td>
+                                                <td className="px-5 py-4 border-r border-gray-100">
+                                                    <div className="min-w-0">
+                                                        <p className="truncate font-mono text-sm font-semibold text-gray-900">
+                                                            {assyItem.part_number || "-"}
+                                                        </p>
+                                                        <p className="mt-0.5 text-xs text-gray-400">
+                                                            ID #{assyItem.id}
+                                                        </p>
+                                                    </div>
+                                                </td>
+                                                <td className="px-5 py-4 text-sm text-gray-700 border-r border-gray-100">
+                                                    <span className="block truncate font-medium">
+                                                        {assyItem.assy_code || "-"}
+                                                    </span>
+                                                </td>
+                                                <td className="px-5 py-4 text-sm text-gray-600 border-r border-gray-100">
+                                                    <span className="inline-flex min-w-9 justify-center rounded-lg bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">
+                                                        {assyItem.level || "-"}
+                                                    </span>
+                                                </td>
+                                                <td className="px-5 py-4 border-r border-gray-100">
+                                                    <span className="inline-flex max-w-full px-2.5 py-1 rounded-lg bg-green-50 text-[#1D6F42] text-xs font-medium border border-green-100">
+                                                        <span className="truncate">{carlineLabel}</span>
+                                                    </span>
+                                                </td>
+                                                <td className="px-5 py-4 text-sm text-gray-600 border-r border-gray-100">
+                                                    <span className="block truncate">
+                                                        {assyItem.type || "-"}
+                                                    </span>
+                                                </td>
+                                                <td className="px-5 py-4 text-right font-mono text-sm text-gray-700 border-r border-gray-100">
+                                                    {formatDecimal(assyItem.umh)}
+                                                </td>
+                                                <td className="px-5 py-4 text-right font-mono text-sm text-gray-700 border-r border-gray-100">
+                                                    {formatInteger(assyItem.std_pack)}
+                                                </td>
+                                                <td className="px-5 py-4 text-center border-r border-gray-100">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleToggleStatus(assyItem)}
+                                                        disabled={isProcessing}
+                                                        className={`inline-flex min-w-[88px] items-center justify-center rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                                                            isActiveRow
+                                                                ? "bg-green-50 text-[#1D6F42] hover:bg-green-100"
+                                                                : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                                                        }`}
+                                                    >
+                                                        {isActiveRow ? "Active" : "Inactive"}
+                                                    </button>
+                                                </td>
+                                                <td className="px-5 py-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <Link
+                                                            href={window.route("assy.show", assyItem.id)}
+                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 hover:text-[#1D6F42] hover:border-[#1D6F42]/30 transition-colors"
+                                                        >
+                                                            <EyeIcon className="w-4 h-4" />
+                                                            Detail
+                                                        </Link>
+                                                        <Link
+                                                            href={window.route("assy.edit", assyItem.id)}
+                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 hover:text-[#1D6F42] hover:border-[#1D6F42]/30 transition-colors"
+                                                        >
+                                                            <PencilIcon className="w-4 h-4" />
+                                                            Edit
+                                                        </Link>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setDeleteTarget(assyItem)}
+                                                            disabled={isProcessing}
+                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-red-600 bg-white border border-red-200 hover:bg-red-50 hover:border-red-300 transition-colors disabled:opacity-60"
+                                                        >
+                                                            <TrashIcon className="w-4 h-4" />
+                                                            Delete
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                ) : (
+                                    <tr>
+                                        <td colSpan={10} className="py-16 text-center">
+                                            <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-2xl flex items-center justify-center border-2 border-dashed border-gray-200">
+                                                <TableCellsIcon className="w-8 h-8 text-gray-400" />
+                                            </div>
+                                            <h3 className="text-base font-semibold text-gray-800 mb-1">No assy data found</h3>
+                                            <p className="text-sm text-gray-400 mt-1">
+                                                {hasActiveFilters
+                                                    ? "Tidak ada data yang cocok dengan filter saat ini."
+                                                    : "Tambahkan assy baru atau import data dari Excel untuk mulai."}
+                                            </p>
+                                            {hasActiveFilters && (
+                                                <button
+                                                    type="button"
+                                                    onClick={clearFilters}
+                                                    className="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                                                >
+                                                    <ArrowPathIcon className="w-4 h-4" />
+                                                    Reset filter
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {assyRows.length > 0 && (
+                        <div className="px-6 py-3.5 bg-gray-50 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3">
+                            <div className="text-sm text-gray-500">
+                                Showing {firstRecord} - {lastRecord} of {assy?.total ?? assyRows.length} records
+                            </div>
+
+                            {lastPage > 1 && (
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => visitPage(currentPage - 1)}
+                                        disabled={currentPage === 1}
+                                        className={`p-2 rounded-lg border text-sm transition-colors ${
+                                            currentPage === 1
+                                                ? "opacity-40 cursor-not-allowed border-gray-200 text-gray-400"
+                                                : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                                        }`}
+                                        aria-label="Previous page"
+                                    >
+                                        <ChevronLeftIcon className="w-4 h-4" />
+                                    </button>
+
+                                    {visiblePages.map((page) => (
+                                        <button
+                                            key={page}
+                                            type="button"
+                                            onClick={() => visitPage(page)}
+                                            className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+                                                page === currentPage
+                                                    ? "bg-[#1D6F42] text-white"
+                                                    : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+                                            }`}
                                         >
-                                            <option value="">-- Pilih Car Line --</option>
-                                            {carlines?.map((cl) => (
-                                                <option key={cl.id} value={cl.id}>
-                                                    {cl.code} - {cl.description || cl.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        <p className="mt-1 text-xs text-gray-500">Data Assy akan diupload untuk Car Line yang dipilih</p>
-                                    </div>
-                                    
-                                    <div className="mb-4 p-4 bg-blue-50 rounded-lg">
-                                        <p className="text-sm text-blue-800 mb-2"><strong>Instructions:</strong></p>
-                                        <ul className="text-sm text-blue-700 list-disc list-inside space-y-1">
-                                            <li>Pilih Car Line terlebih dahulu</li>
-                                            <li>Download template sesuai Car Line yang dipilih</li>
-                                            <li>Upload file Excel (.xlsx or .xls)</li>
-                                            <li>Kolom wajib: part_number, assy_code, level, umh, std_pack</li>
-                                            <li>part_number harus unique dalam 1 Car Line</li>
-                                        </ul>
-                                        
-                                        {/* Template Download Buttons */}
-                                        <div className="mt-3 flex gap-2">
-                                            <button
-                                                onClick={downloadTemplate}
-                                                disabled={!selectedCarlineForUpload || uploading || downloadingTemplate}
-                                                className={`inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-lg transition ${
-                                                    selectedCarlineForUpload && !uploading && !downloadingTemplate
-                                                        ? "bg-blue-600 text-white hover:bg-blue-700"
-                                                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                                }`}
-                                            >
-                                                {downloadingTemplate ? (
-                                                    <>
-                                                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                        </svg>
-                                                        Downloading...
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <DocumentArrowDownIcon className="w-4 h-4" />
-                                                        Download Excel Template
-                                                    </>
-                                                )}
-                                            </button>
-                                            
-                                            <button
-                                                onClick={createManualTemplate}
-                                                disabled={!selectedCarlineForUpload || uploading}
-                                                className={`inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-lg transition ${
-                                                    selectedCarlineForUpload && !uploading
-                                                        ? "bg-green-600 text-white hover:bg-green-700"
-                                                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                                }`}
-                                            >
-                                                <DocumentArrowDownIcon className="w-4 h-4" />
-                                                Download CSV Template
-                                            </button>
-                                        </div>
-                                        
-                                        <p className="text-xs text-blue-600 mt-2">
-                                            💡 Jika download Excel tidak berhasil, gunakan tombol CSV Template sebagai alternatif
+                                            {page}
+                                        </button>
+                                    ))}
+
+                                    <button
+                                        type="button"
+                                        onClick={() => visitPage(currentPage + 1)}
+                                        disabled={currentPage === lastPage}
+                                        className={`p-2 rounded-lg border text-sm transition-colors ${
+                                            currentPage === lastPage
+                                                ? "opacity-40 cursor-not-allowed border-gray-200 text-gray-400"
+                                                : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                                        }`}
+                                        aria-label="Next page"
+                                    >
+                                        <ChevronNextIcon className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {deleteTarget && (
+                    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4">
+                        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
+                            <div className="p-6 border-b border-gray-100">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-gray-900">
+                                            Delete Assy
+                                        </h3>
+                                        <p className="text-sm text-gray-500 mt-1">
+                                            Data yang sudah dihapus tidak bisa dikembalikan.
                                         </p>
                                     </div>
-                                    
-                                    <div className="mt-4">
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Choose Excel File</label>
-                                        <input
-                                            type="file"
-                                            accept=".xlsx,.xls,.csv"
-                                            onChange={handleFileChange}
-                                            disabled={uploading || !selectedCarlineForUpload}
-                                            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[#1D6F42] file:text-white hover:file:bg-[#185c38] cursor-pointer disabled:opacity-50"
-                                        />
-                                        {uploadFile && <p className="mt-2 text-sm text-green-600">Selected: {uploadFile.name}</p>}
-                                    </div>
-                                    
-                                    {uploading && (
-                                        <div className="mt-4 animate-slideDown">
-                                            <div className="flex items-center justify-between mb-2">
-                                                <span className="text-sm text-gray-600">Uploading...</span>
-                                                <span className="text-sm font-medium text-[#1D6F42]">{uploadProgress}%</span>
-                                            </div>
-                                            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                                                <div className="bg-[#1D6F42] h-2 rounded-full transition-all duration-300 relative overflow-hidden" style={{ width: `${uploadProgress}%` }}>
-                                                    <div className="absolute inset-0 bg-white/20 animate-shimmer"></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => setDeleteTarget(null)}
+                                        disabled={isProcessing}
+                                        className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors disabled:opacity-60"
+                                        aria-label="Close"
+                                    >
+                                        <XMarkIcon className="w-5 h-5" />
+                                    </button>
                                 </div>
                             </div>
+
+                            <div className="p-6">
+                                <p className="text-sm text-gray-600">
+                                    Yakin ingin menghapus assy{" "}
+                                    <span className="font-semibold text-gray-900">
+                                        {deleteTarget.part_number}
+                                    </span>
+                                    ?
+                                </p>
+                            </div>
+
                             <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3">
-                                <button 
-                                    onClick={() => setShowUploadModal(false)} 
-                                    disabled={uploading} 
-                                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                                <button
+                                    type="button"
+                                    onClick={() => setDeleteTarget(null)}
+                                    disabled={isProcessing}
+                                    className="h-10 px-4 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-60"
                                 >
                                     Cancel
                                 </button>
-                                <button 
-                                    onClick={handleUpload} 
-                                    disabled={!uploadFile || !selectedCarlineForUpload || uploading} 
-                                    className="px-4 py-2 text-sm font-medium text-white bg-[#1D6F42] rounded-lg hover:bg-[#185c38] disabled:opacity-50 transition"
+                                <button
+                                    type="button"
+                                    onClick={confirmDelete}
+                                    disabled={isProcessing}
+                                    className="h-10 px-4 rounded-lg bg-red-600 text-sm font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-60"
                                 >
-                                    {uploading ? "Uploading..." : "Upload"}
+                                    {isProcessing ? "Deleting..." : "Delete"}
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
+            </div>
 
             <style>{`
                 @keyframes slideDown {
-                    from {
-                        opacity: 0;
-                        transform: translateY(-10px);
-                    }
-                    to {
-                        opacity: 1;
-                        transform: translateY(0);
-                    }
-                }
-                @keyframes shimmer {
-                    0% {
-                        transform: translateX(-100%);
-                    }
-                    100% {
-                        transform: translateX(100%);
-                    }
+                    from { opacity: 0; transform: translateY(-8px); }
+                    to { opacity: 1; transform: translateY(0); }
                 }
                 .animate-slideDown {
-                    animation: slideDown 0.3s ease-out;
-                }
-                .animate-shimmer {
-                    animation: shimmer 2s infinite;
+                    animation: slideDown 0.25s ease-out;
                 }
             `}</style>
         </AdminLayout>

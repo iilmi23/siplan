@@ -6,9 +6,7 @@ export default function Show({ user }) {
     const getRoleBadge = (role) => {
         const badges = {
             admin: 'bg-red-100 text-red-800',
-            ppc_staff: 'bg-blue-100 text-blue-800',
-            ppc_supervisor: 'bg-yellow-100 text-yellow-800',
-            ppc_manager: 'bg-green-100 text-green-800',
+            ppc: 'bg-blue-100 text-blue-800',
         };
         return badges[role] || 'bg-gray-100 text-gray-800';
     };
@@ -16,16 +14,14 @@ export default function Show({ user }) {
     const getRoleLabel = (role) => {
         const labels = {
             admin: 'Admin',
-            ppc_staff: 'PPC Staff',
-            ppc_supervisor: 'PPC Supervisor',
-            ppc_manager: 'PPC Manager',
+            ppc: 'PPC',
         };
         return labels[role] || role;
     };
 
     return (
         <AdminLayout title="User Details">
-            <Head title="User Details | SIMSR" />
+            <Head title="User Details | SIPLAN" />
 
             <div className="min-h-screen bg-gray-50/40 pt-2 pb-8 px-5 md:px-8">
                 {/* Header */}
@@ -96,18 +92,6 @@ export default function Show({ user }) {
                                             <label className="block text-sm font-medium text-gray-500">Email Address</label>
                                             <p className="mt-1 text-sm text-gray-900">{user.email}</p>
                                         </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-500">Account Status</label>
-                                            <p className="mt-1">
-                                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                                    user.email_verified_at
-                                                        ? 'bg-green-100 text-green-800'
-                                                        : 'bg-yellow-100 text-yellow-800'
-                                                }`}>
-                                                    {user.email_verified_at ? 'Verified' : 'Unverified'}
-                                                </span>
-                                            </p>
-                                        </div>
                                     </div>
                                 </div>
 
@@ -138,24 +122,13 @@ export default function Show({ user }) {
                                                         • Debug tools
                                                     </div>
                                                 )}
-                                                {(user.role === 'ppc_staff' || user.role === 'ppc_supervisor' || user.role === 'ppc_manager') && (
+                                                {user.role === 'ppc' && (
                                                     <div className="text-sm text-gray-900">
                                                         • SR upload and management<br/>
+                                                        • Production week, carline, and assy master access<br/>
                                                         • SPP tracking<br/>
                                                         • Summary reports<br/>
                                                         • History access
-                                                    </div>
-                                                )}
-                                                {user.role === 'ppc_supervisor' && (
-                                                    <div className="text-sm text-gray-900 mt-2">
-                                                        • Additional approval permissions<br/>
-                                                        • Team monitoring
-                                                    </div>
-                                                )}
-                                                {user.role === 'ppc_manager' && (
-                                                    <div className="text-sm text-gray-900 mt-2">
-                                                        • KPI dashboard access<br/>
-                                                        • Final approval authority
                                                     </div>
                                                 )}
                                             </div>
@@ -181,21 +154,6 @@ export default function Show({ user }) {
                                                 hour: '2-digit',
                                                 minute: '2-digit'
                                             })}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-500">Email Verified</label>
-                                        <p className="mt-1 text-sm text-gray-900">
-                                            {user.email_verified_at
-                                                ? new Date(user.email_verified_at).toLocaleDateString('en-US', {
-                                                    year: 'numeric',
-                                                    month: 'long',
-                                                    day: 'numeric',
-                                                    hour: '2-digit',
-                                                    minute: '2-digit'
-                                                })
-                                                : 'Not verified'
-                                            }
                                         </p>
                                     </div>
                                 </div>

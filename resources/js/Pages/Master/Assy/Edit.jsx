@@ -1,6 +1,6 @@
 import AdminLayout from "@/Layouts/AdminLayout";
+import Breadcrumb from "@/Components/Admin/Breadcrumb";
 import { Link, useForm } from "@inertiajs/react";
-import { ChevronRightIcon } from "@heroicons/react/24/outline";
 
 export default function Edit({ assy, carLines }) {
     const { data, setData, put, processing, errors } = useForm({
@@ -23,23 +23,14 @@ export default function Edit({ assy, carLines }) {
 
     const submit = (e) => {
         e.preventDefault();
-        put(`/master/assy/${assy.id}`);
+        put(route("assy.update", assy.id));
     };
 
     return (
         <AdminLayout>
             <div className="min-h-screen bg-gray-50/40 pt-2 pb-8 px-5 md:px-8 font-sans">
 
-                {/* Breadcrumb */}
-                <div className="flex items-center gap-2 mb-4 text-sm">
-                    <span className="text-gray-600 hover:text-[#1D6F42] transition-colors cursor-pointer">Menu</span>
-                    <ChevronRightIcon className="w-4 h-4 text-gray-400" />
-                    <Link href="/master/assy" className="text-gray-600 hover:text-[#1D6F42] transition-colors">
-                        Assy Master
-                    </Link>
-                    <ChevronRightIcon className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-800 font-medium">Edit: {assy.part_number}</span>
-                </div>
+                <Breadcrumb items={[{ label: "Masters" }, { label: "Assy", href: route("assy.index") }, { label: `Edit: ${assy.part_number}` }]} />
 
                 {/* Card */}
                 <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
@@ -310,7 +301,7 @@ export default function Edit({ assy, carLines }) {
                             {/* Buttons */}
                             <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
                                 <Link
-                                    href="/master/assy"
+                                    href={route("assy.index")}
                                     className="inline-flex items-center justify-center h-11 px-5 text-sm font-medium rounded-xl border border-gray-200 text-gray-700 bg-white hover:bg-gray-50 transition"
                                 >
                                     Cancel

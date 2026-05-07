@@ -21,7 +21,7 @@ export default function Register() {
 
     return (
         <>
-            <Head title="Register SIMSR" />
+            <Head title="Register SIPLAN" />
 
             {/* Background Image Full Screen - SAMA DENGAN LOGIN */}
             <div 
@@ -225,7 +225,7 @@ export default function Register() {
 
                         {/* FOOTER - SAMA DENGAN LOGIN */}
                         {/*<p className="text-center text-xs text-gray-500 mt-6">
-                            SIMSR • PT Jatim Autocomp Indonesia
+                            SIPLAN • PT Jatim Autocomp Indonesia
                         </p>*/}
 
                     </div>

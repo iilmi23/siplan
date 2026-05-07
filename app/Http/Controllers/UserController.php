@@ -14,7 +14,7 @@ class UserController extends Controller
 {
     public function index()
     {
-        $users = User::select('id', 'name', 'email', 'role', 'email_verified_at', 'created_at')
+        $users = User::select('id', 'name', 'email', 'role', 'created_at')
             ->orderBy('created_at', 'desc')
             ->paginate(10);
 
@@ -34,7 +34,7 @@ class UserController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
-            'role' => 'required|in:admin,ppc_staff,ppc_supervisor,ppc_manager',
+            'role' => 'required|in:admin,ppc',
         ]);
 
         $user = User::create([
@@ -42,7 +42,7 @@ class UserController extends Controller
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'role' => $request->role,
-            'email_verified_at' => now(), // Langsung verified karena dibuat admin
+            'email_verified_at' => now(),
         ]);
 
         return redirect()->route('users.index')->with('success', 'User created successfully.');
@@ -51,7 +51,7 @@ class UserController extends Controller
     public function show(User $user)
     {
         return Inertia::render('Admin/Users/Show', [
-            'user' => $user->only(['id', 'name', 'email', 'role', 'email_verified_at', 'created_at']),
+            'user' => $user->only(['id', 'name', 'email', 'role', 'created_at']),
         ]);
     }
 
@@ -67,7 +67,7 @@ class UserController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|lowercase|email|max:255|unique:'.User::class.',email,'.$user->id,
-            'role' => 'required|in:admin,ppc_staff,ppc_supervisor,ppc_manager',
+            'role' => 'required|in:admin,ppc',
             'password' => ['nullable', 'confirmed', Rules\Password::defaults()],
         ]);
 

@@ -1,476 +1,674 @@
 import AdminLayout from "@/Layouts/AdminLayout";
-import { usePage, router } from "@inertiajs/react";
-import { useEffect, useState, useRef } from "react";
-import * as XLSX from "xlsx";
 import ExcelPreview from "@/Components/ExcelPreview";
-
+import { Link, router, usePage } from "@inertiajs/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import {
-    ChevronRightIcon,
+    ArrowPathIcon,
+    ArrowsPointingInIcon,
+    ArrowsPointingOutIcon,
     CheckCircleIcon,
-    XMarkIcon,
+    ChevronRightIcon,
+    CloudArrowUpIcon,
     DocumentArrowUpIcon,
+    ExclamationTriangleIcon,
+    EyeIcon,
     TableCellsIcon,
     UserGroupIcon,
-    DocumentTextIcon,
-    CloudArrowUpIcon,
-    ChartBarIcon,
-    DocumentCheckIcon,
-    ArrowPathIcon,
-    MagnifyingGlassIcon,
-    ArrowsPointingOutIcon,
-    ArrowsPointingInIcon,
-    PaintBrushIcon,
-    Squares2X2Icon,
+    XMarkIcon,
 } from "@heroicons/react/24/outline";
 
-export default function Index() {
-    const { customers = [], carlines = [], flash = {}, errors = {} } = usePage().props;
+const ACCEPTED_EXTENSIONS = ["xlsx", "xls", "xlsm"];
 
-    const [showAlert, setShowAlert] = useState(false);
+export default function Index() {
+    const { customers = [], flash = {}, errors = {} } = usePage().props;
+    const fileInputRef = useRef(null);
+    const previewContainerRef = useRef(null);
+    const timeoutRef = useRef(null);
+
     const [selectedCustomer, setSelectedCustomer] = useState("");
-    const [srNumber, setSrNumber] = useState("");
     const [selectedPort, setSelectedPort] = useState("");
-    const [selectedCarline, setSelectedCarline] = useState("");
     const [file, setFile] = useState(null);
     const [fileName, setFileName] = useState("");
-
     const [workbook, setWorkbook] = useState(null);
     const [sheets, setSheets] = useState([]);
     const [selectedSheet, setSelectedSheet] = useState("");
     const [zoom, setZoom] = useState(100);
     const [showGridlines, setShowGridlines] = useState(true);
     const [fullscreen, setFullscreen] = useState(false);
+    const [isReadingFile, setIsReadingFile] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+    const [alert, setAlert] = useState({ show: false, type: "success", message: "" });
 
-    const [loading, setLoading] = useState(false);
-    const containerRef = useRef(null);
+    const selectedCustomerData = useMemo(
+        () => customers.find((customer) => String(customer.id) === String(selectedCustomer)),
+        [customers, selectedCustomer]
+    );
 
-    const selectedCustomerData = customers.find((c) => String(c.id) === String(selectedCustomer));
     const customerPorts = selectedCustomerData?.ports || [];
     const requiresPort = customerPorts.length > 0;
+    const selectedSheetIndex = selectedSheet === "" ? null : Number(selectedSheet);
+    const selectedSheetName = selectedSheetIndex !== null && !Number.isNaN(selectedSheetIndex)
+        ? sheets[selectedSheetIndex]
+        : "";
+    const validationErrors = normalizeErrors(errors);
+    const isBusy = isReadingFile || isUploading;
+    const canUpload = Boolean(
+        selectedCustomer &&
+        file &&
+        selectedSheet !== "" &&
+        !Number.isNaN(selectedSheetIndex) &&
+        (!requiresPort || selectedPort) &&
+        !isBusy
+    );
 
     useEffect(() => {
-        if (flash?.success) {
-            setShowAlert(true);
-            const timer = setTimeout(() => setShowAlert(false), 3000);
-            return () => clearTimeout(timer);
-        }
-    }, [flash]);
+        const successMessage = flash?.success;
+        const warningMessage = flash?.warning;
+        const errorMessage = flash?.error;
+        const message = successMessage || warningMessage || errorMessage;
 
-    const handleFileChange = (e) => {
-        const uploadedFile = e.target.files[0];
-        setFile(uploadedFile);
-        setFileName(uploadedFile?.name || "");
+        if (!message) return;
+
+        notify(successMessage ? "success" : warningMessage ? "warning" : "error", message);
+    }, [flash?.success, flash?.warning, flash?.error]);
+
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            setFullscreen(Boolean(document.fullscreenElement));
+        };
+
+        document.addEventListener("fullscreenchange", handleFullscreenChange);
+        return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    }, []);
+
+    useEffect(() => {
+        return () => window.clearTimeout(timeoutRef.current);
+    }, []);
+
+    const notify = (type, message) => {
+        setAlert({ show: true, type, message });
+        window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = window.setTimeout(() => {
+            setAlert((current) => ({ ...current, show: false }));
+        }, type === "error" ? 5000 : 4000);
+    };
+
+    const resetFileState = () => {
+        setFile(null);
+        setFileName("");
+        setWorkbook(null);
         setSheets([]);
         setSelectedSheet("");
 
-        if (!uploadedFile) return;
-
-        const reader = new FileReader();
-        reader.readAsArrayBuffer(uploadedFile);
-
-        reader.onload = (e) => {
-            const data = new Uint8Array(e.target.result);
-            const wb = XLSX.read(data, { 
-                type: "array", 
-                cellStyles: true,
-                cellFormula: true,
-                cellNF: true,
-                cellDates: true
-            });
-
-            setWorkbook(wb);
-            setSheets(wb.SheetNames);
-        };
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
     };
 
-    const handleSheetChange = (e) => {
-        const sheetValue = e.target.value;
-        const sheetIndex = sheetValue === '' ? '' : parseInt(sheetValue, 10);
-        setSelectedSheet(sheetIndex);
+    const resetForm = () => {
+        setSelectedCustomer("");
+        setSelectedPort("");
+        setZoom(100);
+        setShowGridlines(true);
+        resetFileState();
+    };
+
+    const handleCustomerChange = (event) => {
+        setSelectedCustomer(event.target.value);
+        setSelectedPort("");
+    };
+
+    const handleFileChange = (event) => {
+        const uploadedFile = event.target.files?.[0] ?? null;
+        resetFileState();
+
+        if (!uploadedFile) return;
+
+        const extension = uploadedFile.name.split(".").pop()?.toLowerCase();
+        if (!ACCEPTED_EXTENSIONS.includes(extension)) {
+            notify("error", "Format file tidak didukung. Gunakan .xlsx, .xls, atau .xlsm.");
+            return;
+        }
+
+        setFile(uploadedFile);
+        setFileName(uploadedFile.name);
+        setIsReadingFile(true);
+
+        const reader = new FileReader();
+
+        reader.onload = (readerEvent) => {
+            try {
+                const data = new Uint8Array(readerEvent.target.result);
+                const parsedWorkbook = XLSX.read(data, {
+                    type: "array",
+                    cellStyles: true,
+                    cellFormula: true,
+                    cellNF: true,
+                    cellDates: true,
+                });
+
+                setWorkbook(parsedWorkbook);
+                setSheets(parsedWorkbook.SheetNames || []);
+                setSelectedSheet(parsedWorkbook.SheetNames?.length === 1 ? "0" : "");
+
+                notify("success", "File berhasil dibaca. Pilih sheet untuk melihat preview.");
+            } catch (error) {
+                console.error("Read Excel error:", error);
+                resetFileState();
+                notify("error", "File Excel tidak bisa dibaca. Pastikan file tidak rusak dan formatnya sesuai.");
+            } finally {
+                setIsReadingFile(false);
+            }
+        };
+
+        reader.onerror = () => {
+            setIsReadingFile(false);
+            resetFileState();
+            notify("error", "Gagal membaca file. Silakan pilih file lain.");
+        };
+
+        reader.readAsArrayBuffer(uploadedFile);
     };
 
     const handleSubmit = () => {
-        const sheetValue = selectedSheet;
+        if (!selectedCustomer) {
+            notify("error", "Pilih customer terlebih dahulu.");
+            return;
+        }
 
-        if (!selectedCustomer || !file || sheetValue === "" || Number.isNaN(sheetValue)) {
-            alert("Please complete all fields including sheet");
+        if (requiresPort && !selectedPort) {
+            notify("error", `Port wajib dipilih untuk customer ${selectedCustomerData?.code || selectedCustomerData?.name}.`);
+            return;
+        }
+
+        if (!file) {
+            notify("error", "Pilih file Excel terlebih dahulu.");
+            return;
+        }
+
+        if (selectedSheet === "" || Number.isNaN(selectedSheetIndex)) {
+            notify("error", "Pilih worksheet yang ingin diupload.");
             return;
         }
 
         const formData = new FormData();
         formData.append("customer", selectedCustomer);
-        formData.append("carline_id", selectedCarline);
-        formData.append("port", selectedPort);
+        if (selectedPort) {
+            formData.append("port", selectedPort);
+        }
         formData.append("file", file);
-        formData.append("sheet", sheetValue);
+        formData.append("sheet", selectedSheetIndex);
 
-        setLoading(true);
+        setIsUploading(true);
 
-        // Create upload promise with timeout
-        const uploadPromise = router.post(route("sr.upload"), formData, {
+        const uploadTimeout = window.setTimeout(() => {
+            notify("warning", "Upload masih diproses. File besar bisa memerlukan beberapa menit.");
+        }, 120000);
+
+        router.post(route("sr.upload"), formData, {
             forceFormData: true,
             preserveScroll: true,
-        });
-
-        // Set timeout for upload (5 minutes)
-        const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Upload timeout - please try again')), 300000);
-        });
-
-        Promise.race([uploadPromise, timeoutPromise])
-            .then(() => {
-                setLoading(false);
-                setSelectedCustomer("");
-                setSrNumber("");
-                setFile(null);
-                setFileName("");
-                setWorkbook(null);
-                setSheets([]);
-                setSelectedSheet("");
-            })
-            .catch((err) => {
-                setLoading(false);
-                console.error("Upload error:", err);
-                
-                // Handle timeout
-                if (err.message?.includes('timeout')) {
-                    alert("❌ Upload timed out. Please try again or contact administrator.");
+            onSuccess: (page) => {
+                const serverFlash = page?.props?.flash || {};
+                if (serverFlash?.error || serverFlash?.warning) {
                     return;
                 }
-                
-                // Handle other errors
-                if (!err || typeof err !== 'object' || Object.keys(err).length === 0) {
-                    alert("❌ Upload gagal. Silakan coba lagi atau hubungi administrator.");
-                } else {
-                    alert("❌ Upload gagal:\n\n" + JSON.stringify(err, null, 2));
-                }
-            });
+
+                resetForm();
+            },
+            onError: (serverErrors) => {
+                notify("error", formatServerErrors(serverErrors));
+            },
+            onFinish: () => {
+                window.clearTimeout(uploadTimeout);
+                setIsUploading(false);
+            },
+        });
     };
 
-    const toggleFullscreen = () => {
-        if (!document.fullscreenElement && containerRef.current) {
-            containerRef.current.requestFullscreen();
-            setFullscreen(true);
-        } else {
-            document.exitFullscreen();
-            setFullscreen(false);
+    const toggleFullscreen = async () => {
+        try {
+            if (!document.fullscreenElement && previewContainerRef.current) {
+                await previewContainerRef.current.requestFullscreen();
+                return;
+            }
+
+            if (document.fullscreenElement) {
+                await document.exitFullscreen();
+            }
+        } catch (error) {
+            console.error("Fullscreen error:", error);
+            notify("error", "Mode fullscreen tidak bisa dibuka di browser ini.");
         }
     };
-
-    useEffect(() => {
-        const handleFullscreenChange = () => {
-            setFullscreen(!!document.fullscreenElement);
-        };
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    }, []);
 
     return (
         <AdminLayout>
             <div className="min-h-screen bg-gray-50/40 pt-2 pb-8 px-5 md:px-8 font-sans">
-
-                {/* BREADCRUMB */}
-                <div className="flex items-center gap-2 text-sm text-gray-600 mb-6">
-                    <span>Menu</span>
-                    <ChevronRightIcon className="w-4 h-4" />
-                    <span>Shipping Release</span>
-                    <ChevronRightIcon className="w-4 h-4" />
+                <nav className="flex items-center gap-2 mb-4 text-sm" aria-label="Breadcrumb">
+                    <Link href={route("dashboard")} className="text-gray-600 hover:text-[#1D6F42] transition-colors">
+                        Home
+                    </Link>
+                    <ChevronRightIcon className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600">Shipping Release</span>
+                    <ChevronRightIcon className="w-4 h-4 text-gray-400" />
                     <span className="text-gray-900 font-medium">Upload SR</span>
-                </div>
+                </nav>
 
-                {/* SUCCESS ALERT */}
-                {showAlert && (
-                    <div className="mb-6 animate-slideDown">
-                        <div className="flex items-center justify-between bg-[#1D6F42]/10 border border-[#1D6F42]/20 rounded-xl p-4">
-                            <div className="flex items-center gap-3">
-                                <CheckCircleIcon className="w-5 h-5 text-[#1D6F42]" />
-                                <span className="text-sm text-[#1D6F42]">{flash.success}</span>
-                            </div>
-                            <button
-                                onClick={() => setShowAlert(false)}
-                                className="text-[#1D6F42] hover:text-[#145330]"
-                            >
-                                <XMarkIcon className="w-5 h-5" />
-                            </button>
+                {alert.show && alert.message && (
+                    <Alert
+                        type={alert.type}
+                        message={alert.message}
+                        onClose={() => setAlert((current) => ({ ...current, show: false }))}
+                    />
+                )}
+
+                {validationErrors.length > 0 && (
+                    <ValidationAlert errors={validationErrors} />
+                )}
+
+                {isUploading && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+                        <div className="flex items-center gap-3 rounded-xl bg-white p-6 shadow-xl">
+                            <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#1D6F42] border-t-transparent" />
+                            <span className="text-sm font-medium text-gray-700">Uploading SR...</span>
                         </div>
                     </div>
                 )}
 
-                {/* ERROR ALERT */}
-                {Object.keys(errors).length > 0 && (
-                    <div className="mb-6 animate-slideDown">
-                        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                            {Object.values(errors).map((err, i) => (
-                                <p key={i} className="text-sm text-red-600 flex items-center gap-2">
-                                    <span className="w-1 h-1 bg-red-600 rounded-full"></span>
-                                    {err}
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="p-6 pb-4 border-b border-gray-100">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                            <div>
+                                <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">
+                                    Upload Shipping Release
+                                </h1>
+                                <p className="mt-1 text-sm text-gray-500">
+                                    Pilih customer, Port, Upload file Excel SR, Pilih worksheet, lalu review preview sebelum diproses.
                                 </p>
-                            ))}
+                            </div>
+
+                            <div className="hidden h-12 w-12 items-center justify-center rounded-xl bg-[#1D6F42]/10 text-[#1D6F42] sm:flex">
+                                <DocumentArrowUpIcon className="h-6 w-6" />
+                            </div>
                         </div>
                     </div>
-                )}
 
-                {/* MAIN CARD */}
-                <div className="max-w-full mx-auto">
-                    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-
-                        {/* HEADER */}
-                        <div className="border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-5">
-                            <div className="flex items-center justify-between flex-wrap gap-4">
-                                <div>
-                                    <h1 className="text-xl font-semibold text-gray-900">
-                                        Upload Shipping Release (SR)
-                                    </h1>
-                                    <p className="text-sm text-gray-500 mt-0.5">
-                                        Upload Excel file, select sheet, review raw data, then map and upload
-                                    </p>
+                    <div className="p-6 space-y-6">
+                        <section className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                            <div className="border-b border-gray-100 bg-gray-50/70 px-5 py-4">
+                                <div className="flex items-center gap-3">
+                                    {/* <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1D6F42]/10 text-[#1D6F42]">
+                                        <CloudArrowUpIcon className="h-5 w-5" />
+                                    </div> */}
+                                    {/* <div>
+                                        <h2 className="text-sm font-semibold text-gray-900">Upload Setup</h2>
+                                        <p className="text-xs text-gray-500">Lengkapi customer, port jika ada, file, dan worksheet.</p>
+                                    </div> */}
                                 </div>
                             </div>
-                        </div>
 
-                        {/* FORM SECTION */}
-                        <div className="p-6 border-b border-gray-200 bg-white">
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                <div className="space-y-5">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                            <div className="flex items-center gap-2">
-                                                <UserGroupIcon className="w-4 h-4 text-gray-400" />
-                                                <span>Customer</span>
-                                            </div>
-                                        </label>
-                                        <select
-                                            value={selectedCustomer}
-                                            onChange={(e) => {
-                                                setSelectedCustomer(e.target.value);
-                                                setSelectedPort("");
-                                            }}
-                                            className="w-full h-11 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#1D6F42] focus:border-[#1D6F42] transition-all duration-200 text-gray-700"
-                                        >
-                                            <option value="">Select Customer</option>
-                                            {customers.map((c) => (
-                                                <option key={c.id} value={c.id}>
-                                                    {c.code}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
+                            <div className="grid gap-5 p-5 lg:grid-cols-2">
+                                <div>
+                                    <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-gray-700">
+                                        <UserGroupIcon className="h-4 w-4 text-gray-400" />
+                                        Customer <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        value={selectedCustomer}
+                                        onChange={handleCustomerChange}
+                                        className={inputClass}
+                                    >
+                                        <option value="">Select Customer</option>
+                                        {customers.map((customer) => (
+                                            <option key={customer.id} value={customer.id}>
+                                                {customer.code}
+                                                {customer.name ? ` - ${customer.name}` : ""}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
 
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                            <div className="flex items-center gap-2">
-                                                <Squares2X2Icon className="w-4 h-4 text-gray-400" />
-                                                <span>Car Line</span>
-                                            </div>
-                                        </label>
-                                        <select
-                                            value={selectedCarline}
-                                            onChange={(e) => setSelectedCarline(e.target.value)}
-                                            className="w-full h-11 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#1D6F42] focus:border-[#1D6F42] transition-all duration-200 text-gray-700"
-                                        >
-                                            <option value="">-- Select Car Line --</option>
-                                            {carlines.map((cl) => (
-                                                <option key={cl.id} value={cl.id}>{cl.code} - {cl.description}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {customerPorts.length > 0 && (
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                                <div className="flex items-center gap-2">
-                                                    <UserGroupIcon className="w-4 h-4 text-gray-400" />
-                                                    <span>Port</span>
-                                                </div>
-                                            </label>
-                                            <select
-                                                value={selectedPort}
-                                                onChange={(e) => setSelectedPort(e.target.value)}
-                                                className="w-full h-11 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#1D6F42] focus:border-[#1D6F42] transition-all duration-200 text-gray-700"
-                                            >
-                                                <option value="">-- Select Port --</option>
+                                <div>
+                                    <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-gray-700">
+                                        <UserGroupIcon className="h-4 w-4 text-gray-400" />
+                                        Port {requiresPort && <span className="text-red-500">*</span>}
+                                    </label>
+                                    <select
+                                        value={selectedPort}
+                                        onChange={(event) => setSelectedPort(event.target.value)}
+                                        disabled={!selectedCustomer || customerPorts.length === 0}
+                                        className={`${inputClass} disabled:bg-gray-50 disabled:text-gray-400`}
+                                    >
+                                        {!selectedCustomer ? (
+                                            <option value="">Select customer first</option>
+                                        ) : customerPorts.length === 0 ? (
+                                            <option value="">No port required</option>
+                                        ) : (
+                                            <>
+                                                <option value="">Select Port</option>
                                                 {customerPorts.map((port) => (
                                                     <option key={port.id} value={port.id}>
                                                         {port.name}
                                                     </option>
                                                 ))}
-                                            </select>
-                                            {requiresPort && !selectedPort && (
-                                                <p className="text-xs text-red-600 mt-2">Port is required for this customer.</p>
-                                            )}
-                                        </div>
+                                            </>
+                                        )}
+                                    </select>
+                                    {requiresPort && !selectedPort && (
+                                        <p className="mt-1 text-xs text-amber-600">
+                                            Customer ini membutuhkan port sebelum upload.
+                                        </p>
                                     )}
-
-                                    {/* <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                            <div className="flex items-center gap-2">
-                                                <DocumentTextIcon className="w-4 h-4 text-gray-400" />
-                                                <span>SR Number</span>
-                                            </div>
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="Example: JAI 2026-03-01"
-                                            value={srNumber}
-                                            onChange={(e) => setSrNumber(e.target.value)}
-                                            className="w-full h-11 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#1D6F42] focus:border-[#1D6F42] transition-all duration-200 text-gray-700"
-                                        />
-                                    </div> */}
                                 </div>
 
-                                <div className="space-y-5">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                            <div className="flex items-center gap-2">
-                                                <DocumentArrowUpIcon className="w-4 h-4 text-gray-400" />
-                                                <span>Upload Excel File</span>
-                                            </div>
-                                        </label>
-                                        <div className="relative">
-                                            <input
-                                                type="file"
-                                                accept=".xlsx,.xls"
-                                                onChange={handleFileChange}
-                                                className="hidden"
-                                                id="file-upload"
-                                            />
-                                            <label
-                                                htmlFor="file-upload"
-                                                className="flex items-center gap-3 w-full h-11 px-4 bg-gray-50 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-100 transition-all duration-200"
-                                            >
-                                                <DocumentArrowUpIcon className="w-5 h-5 text-gray-400" />
-                                                <span className={`text-sm ${fileName ? 'text-gray-700' : 'text-gray-400'}`}>
-                                                    {fileName || 'Select Excel File...'}
-                                                </span>
-                                            </label>
-                                        </div>
-                                    </div>
+                                <div>
+                                    <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-gray-700">
+                                        <DocumentArrowUpIcon className="h-4 w-4 text-gray-400" />
+                                        Excel File <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        ref={fileInputRef}
+                                        id="sr-file-upload"
+                                        type="file"
+                                        accept=".xlsx,.xls,.xlsm"
+                                        onChange={handleFileChange}
+                                        className="hidden"
+                                    />
+                                    <label
+                                        htmlFor="sr-file-upload"
+                                        className="flex h-11 w-full cursor-pointer items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 text-sm text-gray-700 transition-all hover:bg-gray-50 focus-within:border-[#1D6F42]"
+                                    >
+                                        <DocumentArrowUpIcon className="h-5 w-5 shrink-0 text-gray-400" />
+                                        <span className={`truncate ${fileName ? "font-medium text-gray-800" : "text-gray-400"}`}>
+                                            {fileName || "Choose .xlsx, .xls, or .xlsm file"}
+                                        </span>
+                                    </label>
+                                    {isReadingFile && (
+                                        <p className="mt-2 text-xs text-gray-500">Reading workbook...</p>
+                                    )}
+                                </div>
 
-                                    {sheets.length > 0 && (
-                                        <div className="animate-fadeIn">
-                                            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                                <div className="flex items-center gap-2">
-                                                    <TableCellsIcon className="w-4 h-4 text-gray-400" />
-                                                    <span>Select Sheet</span>
-                                                </div>
-                                            </label>
-                                            <select
-                                                value={selectedSheet}
-                                                onChange={handleSheetChange}
-                                                className="w-full h-11 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#1D6F42] focus:border-[#1D6F42] transition-all duration-200 text-gray-700"
-                                            >
-                                                <option value="">-- Select Sheet --</option>
+                                <div>
+                                    <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-gray-700">
+                                        <TableCellsIcon className="h-4 w-4 text-gray-400" />
+                                        Worksheet <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        value={selectedSheet}
+                                        onChange={(event) => setSelectedSheet(event.target.value)}
+                                        disabled={sheets.length === 0 || isReadingFile}
+                                        className={`${inputClass} disabled:bg-gray-50 disabled:text-gray-400`}
+                                    >
+                                        {sheets.length === 0 ? (
+                                            <option value="">Select file first</option>
+                                        ) : (
+                                            <>
+                                                <option value="">Select Sheet</option>
                                                 {sheets.map((sheet, index) => (
-                                                    <option key={index} value={index}>
+                                                    <option key={sheet} value={index}>
                                                         {sheet}
                                                     </option>
                                                 ))}
-                                            </select>
-                                            {selectedCustomerData?.code === 'YC' && (
-                                                <p className="text-xs text-gray-500 mt-2">
-                                                    For YC files, only the selected sheet will be mapped and uploaded. Choose the correct sheet name before submitting.
-                                                </p>
-                                            )}
-                                        </div>
+                                            </>
+                                        )}
+                                    </select>
+                                    {selectedCustomerData?.code?.toUpperCase() === "YC" && (
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            Untuk file YC, hanya sheet yang dipilih yang akan diproses.
+                                        </p>
                                     )}
                                 </div>
                             </div>
 
-                            {/* ACTION BUTTONS */}
-                            <div className="mt-8 flex justify-end gap-3">
-
-
-                                <button
-                                    type="button"
-                                    onClick={handleSubmit}
-                                    disabled={loading || (requiresPort && !selectedPort)}
-                                    className="px-8 py-3 bg-[#1D6F42] text-white rounded-xl hover:bg-[#145330] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-medium shadow-sm hover:shadow-md flex items-center gap-2"
-                                >
-                                    {loading ? (
-                                        <>
-                                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                            </svg>
-                                            <span>Uploading...</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <CloudArrowUpIcon className="w-5 h-5" />
-                                            <span>Upload SR</span>
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* EXCEL PREVIEW SECTION */}
-                        {selectedSheet !== "" && !Number.isNaN(selectedSheet) && workbook && (
-                            <div className="animate-fadeIn">
-                                <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between flex-wrap gap-3">
-                                    <div className="flex items-center gap-3">
-                                        <TableCellsIcon className="w-5 h-5 text-[#1D6F42]" />
-                                        <h2 className="font-medium text-gray-700">
-                                            Excel Preview - <span className="text-[#1D6F42]">{sheets[selectedSheet]}</span>
-                                        </h2>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs text-gray-500">Zoom:</span>
-                                            <select
-                                                value={zoom}
-                                                onChange={(e) => setZoom(Number(e.target.value))}
-                                                className="h-8 px-2 text-sm border border-gray-200 rounded-lg bg-white"
-                                            >
-                                                <option value={75}>75%</option>
-                                                <option value={100}>100%</option>
-                                                <option value={125}>125%</option>
-                                                <option value={150}>150%</option>
-                                                <option value={200}>200%</option>
-                                            </select>
-                                        </div>
-                                        <button
-                                            onClick={() => setShowGridlines(!showGridlines)}
-                                            className={`p-1.5 rounded-lg transition-colors ${showGridlines ? 'bg-[#1D6F42] text-white' : 'bg-gray-200 text-gray-600'}`}
-                                            title={showGridlines ? "Hide Gridlines" : "Show Gridlines"}
-                                        >
-                                            <Squares2X2Icon className="w-4 h-4" />
-                                        </button>
-                                        <button
-                                            onClick={toggleFullscreen}
-                                            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                                            title={fullscreen ? "Exit Fullscreen" : "Fullscreen"}
-                                        >
-                                            {fullscreen ? 
-                                                <ArrowsPointingInIcon className="w-4 h-4 text-gray-600" /> : 
-                                                <ArrowsPointingOutIcon className="w-4 h-4 text-gray-600" />
-                                            }
-                                        </button>
-                                    </div>
+                            <div className="flex flex-col gap-3 border-t border-gray-100 bg-gray-50/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex flex-wrap gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={handleSubmit}
+                                        disabled={!canUpload}
+                                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#1D6F42] px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#185c38] disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        <CloudArrowUpIcon className="h-4 w-4" />
+                                        {isUploading ? "Uploading..." : "Upload SR"}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={resetForm}
+                                        disabled={isBusy}
+                                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                                    >
+                                        <ArrowPathIcon className="h-4 w-4" />
+                                        Reset
+                                    </button>
                                 </div>
-                                <div ref={containerRef}>
-                                    <ExcelPreview
-                                        workbook={workbook}
-                                        sheetName={sheets[selectedSheet]}
-                                        zoom={zoom}
-                                        showGridlines={showGridlines}
-                                    />
-                                </div>
-                            </div>
-                        )}
 
-                        {/* NO SHEET SELECTED STATE */}
-                        {sheets.length > 0 && selectedSheet === "" && (
-                            <div className="p-12 text-center">
-                                <TableCellsIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                                <p className="text-gray-400">Select a sheet to preview Excel data</p>
-                                <p className="text-xs text-gray-400 mt-1">The preview will show colors, borders, and formatting exactly like the original Excel file</p>
+                                <p className="text-xs text-gray-500">
+                                    Supported customers: TYC, YNA, SAI, YC, or any customer with an active SR Mapping Template.
+                                </p>
                             </div>
-                        )}
+                        </section>
+
+                        <PreviewSection
+                            workbook={workbook}
+                            sheetName={selectedSheetName}
+                            selectedSheet={selectedSheet}
+                            sheets={sheets}
+                            zoom={zoom}
+                            setZoom={setZoom}
+                            showGridlines={showGridlines}
+                            setShowGridlines={setShowGridlines}
+                            fullscreen={fullscreen}
+                            toggleFullscreen={toggleFullscreen}
+                            previewContainerRef={previewContainerRef}
+                        />
                     </div>
                 </div>
             </div>
 
+            <style>{`
+                @keyframes slideDown {
+                    from { opacity: 0; transform: translateY(-8px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                .animate-slideDown {
+                    animation: slideDown 0.25s ease-out;
+                }
+            `}</style>
         </AdminLayout>
     );
 }
+
+function PreviewSection({
+    workbook,
+    sheetName,
+    selectedSheet,
+    sheets,
+    zoom,
+    setZoom,
+    showGridlines,
+    setShowGridlines,
+    fullscreen,
+    toggleFullscreen,
+    previewContainerRef,
+}) {
+    const hasWorkbook = Boolean(workbook && sheets.length > 0);
+    const hasPreview = Boolean(workbook && selectedSheet !== "" && sheetName);
+
+    if (!hasWorkbook) {
+        return (
+            <section className="rounded-xl border border-gray-200 bg-white p-10 text-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50">
+                    <DocumentArrowUpIcon className="h-8 w-8 text-gray-400" />
+                </div>
+                <h2 className="mt-4 text-base font-semibold text-gray-800">Belum ada file</h2>
+                <p className="mt-1 text-sm text-gray-500">Pilih file Excel untuk membuka preview worksheet.</p>
+            </section>
+        );
+    }
+
+    if (!hasPreview) {
+        return (
+            <section className="rounded-xl border border-gray-200 bg-white p-10 text-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50">
+                    <TableCellsIcon className="h-8 w-8 text-gray-400" />
+                </div>
+                <h2 className="mt-4 text-base font-semibold text-gray-800">Pilih worksheet</h2>
+                <p className="mt-1 text-sm text-gray-500">Preview Excel akan tampil setelah sheet dipilih.</p>
+            </section>
+        );
+    }
+
+    return (
+        <section className="rounded-xl border border-gray-200 bg-white overflow-hidden animate-slideDown">
+            <div className="flex flex-col gap-3 border-b border-gray-100 bg-gray-50/70 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1D6F42]/10 text-[#1D6F42]">
+                        <EyeIcon className="h-5 w-5" />
+                    </div>
+                    <div>
+                        <h2 className="text-sm font-semibold text-gray-900">Excel Preview</h2>
+                        <p className="mt-0.5 text-xs text-gray-500">
+                            Sheet: <span className="font-semibold text-[#1D6F42]">{sheetName}</span>
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                    <label className="flex h-9 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-600">
+                        Zoom
+                        <select
+                            value={zoom}
+                            onChange={(event) => setZoom(Number(event.target.value))}
+                            className="bg-transparent text-sm font-semibold text-gray-800 focus:outline-none"
+                        >
+                            <option value={75}>75%</option>
+                            <option value={100}>100%</option>
+                            <option value={125}>125%</option>
+                            <option value={150}>150%</option>
+                            <option value={200}>200%</option>
+                        </select>
+                    </label>
+
+                    <button
+                        type="button"
+                        onClick={() => setShowGridlines((current) => !current)}
+                        className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors ${
+                            showGridlines
+                                ? "border-[#1D6F42]/30 bg-[#1D6F42]/10 text-[#1D6F42]"
+                                : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                        }`}
+                    >
+                        <TableCellsIcon className="h-4 w-4" />
+                        Grid
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={toggleFullscreen}
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+                    >
+                        {fullscreen ? (
+                            <ArrowsPointingInIcon className="h-4 w-4" />
+                        ) : (
+                            <ArrowsPointingOutIcon className="h-4 w-4" />
+                        )}
+                        {fullscreen ? "Exit" : "Fullscreen"}
+                    </button>
+                </div>
+            </div>
+
+            <div ref={previewContainerRef} className="bg-white">
+                <ExcelPreview
+                    workbook={workbook}
+                    sheetName={sheetName}
+                    zoom={zoom}
+                    showGridlines={showGridlines}
+                />
+            </div>
+        </section>
+    );
+}
+
+function Alert({ type, message, onClose }) {
+    const isSuccess = type === "success";
+    const isWarning = type === "warning";
+    const Icon = isSuccess ? CheckCircleIcon : ExclamationTriangleIcon;
+
+    return (
+        <div className="mb-6 animate-slideDown">
+            <div className={`flex items-start gap-3 rounded-xl border bg-white p-4 shadow-sm ${
+                isSuccess
+                    ? "border-l-4 border-l-[#1D6F42] border-gray-200"
+                    : isWarning
+                        ? "border-l-4 border-l-amber-500 border-gray-200"
+                        : "border-l-4 border-l-red-500 border-gray-200"
+            }`}>
+                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                    isSuccess
+                        ? "bg-green-50 text-[#1D6F42]"
+                        : isWarning
+                            ? "bg-amber-50 text-amber-600"
+                            : "bg-red-50 text-red-500"
+                }`}>
+                    <Icon className="h-5 w-5" />
+                </div>
+                <p className="flex-1 whitespace-pre-line text-sm font-medium text-gray-800">{message}</p>
+                <button
+                    type="button"
+                    onClick={onClose}
+                    className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                    aria-label="Close alert"
+                >
+                    <XMarkIcon className="h-4 w-4" />
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function ValidationAlert({ errors }) {
+    return (
+        <div className="mb-6 animate-slideDown">
+            <div className="rounded-xl border border-l-4 border-gray-200 border-l-red-500 bg-white p-4 shadow-sm">
+                <div className="flex items-start gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-500">
+                        <ExclamationTriangleIcon className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1">
+                        <p className="text-sm font-semibold text-gray-900">Upload belum bisa diproses</p>
+                        <div className="mt-2 space-y-1">
+                            {errors.map((error, index) => (
+                                <p key={index} className="text-sm text-gray-700">
+                                    {error}
+                                </p>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function normalizeErrors(errors) {
+    if (!errors || typeof errors !== "object") return [];
+
+    return Object.values(errors)
+        .flat()
+        .filter(Boolean)
+        .map((error) => String(error));
+}
+
+function formatServerErrors(serverErrors) {
+    const normalized = normalizeErrors(serverErrors);
+    if (normalized.length === 0) {
+        return "Upload gagal. Silakan cek data dan coba lagi.";
+    }
+
+    return normalized.join("\n");
+}
+
+const inputClass =
+    "w-full h-11 px-4 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1D6F42]/20 focus:border-[#1D6F42] bg-white transition-all";

@@ -17,8 +17,17 @@ class WeekGenerator
      * @param string $endDate (Y-m-d)
      * @return Collection
      */
-    public static function generateFromDateRange($customerId, $startDate, $endDate)
+    public static function generateFromDateRange($customerIdOrStartDate, $startDateOrEndDate, $endDate = null)
     {
+        if ($endDate === null) {
+            $customerId = null;
+            $startDate = $customerIdOrStartDate;
+            $endDate = $startDateOrEndDate;
+        } else {
+            $customerId = $customerIdOrStartDate;
+            $startDate = $startDateOrEndDate;
+        }
+
         $start = Carbon::parse($startDate);
         $end = Carbon::parse($endDate);
         
@@ -56,6 +65,7 @@ class WeekGenerator
                 [
                     'month_name' => $monthName,
                     'week_start' => $current->toDateString(),
+                    'end_date' => $current->copy()->addDays(6)->toDateString(), // Sunday
                     'num_weeks' => $numWeeks,
                 ]
             );
@@ -72,7 +82,7 @@ class WeekGenerator
     /**
      * Cari week berdasarkan tanggal ETD
      * 
-     * @param int $customerId
+     * @param int|null $customerId
      * @param string $date (Y-m-d)
      * @return ProductionWeek|null
      */
@@ -81,12 +91,37 @@ class WeekGenerator
         if (!$date) return null;
         
         $date = Carbon::parse($date);
-        
-        return ProductionWeek::where('customer_id', $customerId)
-            ->where('year', $date->year)
+
+        $queries = [];
+
+        if (!empty($customerId)) {
+            $queries[] = ProductionWeek::where('year', $date->year)
+                ->where('customer_id', $customerId)
+                ->where('week_start', '<=', $date)
+                ->where(function ($q) use ($date) {
+                    $q->whereNull('end_date')
+                        ->orWhere('end_date', '>=', $date);
+                })
+                ->orderBy('week_start', 'desc');
+        }
+
+        $queries[] = ProductionWeek::where('year', $date->year)
+            ->whereNull('customer_id')
             ->where('week_start', '<=', $date)
-            ->orderBy('week_start', 'desc')
-            ->first();
+            ->where(function ($q) use ($date) {
+                $q->whereNull('end_date')
+                    ->orWhere('end_date', '>=', $date);
+            })
+            ->orderBy('week_start', 'desc');
+
+        foreach ($queries as $query) {
+            $week = $query->first();
+            if ($week) {
+                return $week;
+            }
+        }
+
+        return null;
     }
     
     /**

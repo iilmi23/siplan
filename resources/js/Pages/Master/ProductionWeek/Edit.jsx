@@ -1,247 +1,283 @@
 import AdminLayout from "@/Layouts/AdminLayout";
-import { Link, useForm } from "@inertiajs/react";
-import { ChevronRightIcon, CalendarDaysIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import Breadcrumb from "@/Components/Admin/Breadcrumb";
+import { Link, router, useForm } from "@inertiajs/react";
+import { useMemo } from "react";
+import { CalendarDaysIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 
 const MONTH_MAP = {
-    1:"JAN",2:"FEB",3:"MAR",4:"APR",5:"MAY",6:"JUN",
-    7:"JUL",8:"AUG",9:"SEP",10:"OCT",11:"NOV",12:"DEC",
+    1: "JAN",
+    2: "FEB",
+    3: "MAR",
+    4: "APR",
+    5: "MAY",
+    6: "JUN",
+    7: "JUL",
+    8: "AUG",
+    9: "SEP",
+    10: "OCT",
+    11: "NOV",
+    12: "DEC",
 };
 
-export default function Edit({ productionWeek, customers }) {
-    const { data, setData, put, processing, errors } = useForm({
-        customer_id:  productionWeek.customer_id,
-        year:         productionWeek.year,
+export default function Edit({ productionWeek, customers = [] }) {
+    const { data, setData, processing, errors } = useForm({
+        customer_id: productionWeek.customer_id ?? "",
+        year: productionWeek.year,
         month_number: productionWeek.month_number,
-        month_name:   productionWeek.month_name,
-        week_no:      productionWeek.week_no,
-        // Normalize date: ambil bagian YYYY-MM-DD saja
-        week_start:   productionWeek.week_start?.substring(0, 10) ?? "",
-        num_weeks:    productionWeek.num_weeks,
+        month_name: productionWeek.month_name,
+        start_date: productionWeek.start_date ?? "",
+        end_date: productionWeek.end_date ?? "",
+        num_weeks: productionWeek.num_weeks ?? productionWeek.total_weeks ?? 4,
     });
 
-    const handleMonthChange = (val) => {
-        const num = parseInt(val);
-        setData(prev => ({
+    const weekPreview = useMemo(() => {
+        const totalWeeks = Number(data.num_weeks);
+        if (!data.start_date || !totalWeeks) return [];
+
+        return Array.from({ length: totalWeeks }, (_, index) => {
+            const start = addDays(data.start_date, index * 7);
+            const end = index === totalWeeks - 1 && data.end_date
+                ? data.end_date
+                : addDays(start, 6);
+
+            return {
+                week_no: index + 1,
+                start,
+                end,
+            };
+        });
+    }, [data.start_date, data.end_date, data.num_weeks]);
+
+    const handleMonthChange = (value) => {
+        const monthNumber = parseInt(value, 10);
+        setData((prev) => ({
             ...prev,
-            month_number: val,
-            month_name: MONTH_MAP[num] ?? "",
+            month_number: value,
+            month_name: MONTH_MAP[monthNumber] ?? "",
         }));
     };
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        put(route("production-weeks.update", productionWeek.id));
+
+        const params = new URLSearchParams({
+            year: String(productionWeek.year),
+            month: String(productionWeek.month_number),
+        });
+
+        if (productionWeek.customer_id !== null && productionWeek.customer_id !== undefined && productionWeek.customer_id !== "") {
+            params.set("customer_id", String(productionWeek.customer_id));
+        }
+
+        router.put(`/production-week/update?${params.toString()}`, data, {
+            preserveScroll: true,
+        });
     };
 
-    const hasCalendar   = productionWeek.production_calendars_count > 0;
-    const hasSrHeaders  = productionWeek.sr_headers_count > 0;
-    const isLocked      = hasCalendar || hasSrHeaders;
+    const currentCustomer = customers.find((customer) => String(customer.id) === String(productionWeek.customer_id));
+    const nextCustomer = customers.find((customer) => String(customer.id) === String(data.customer_id));
+    const isLocked = Number(productionWeek.total_weeks ?? 0) > 0;
+
+    const beforePeriod = `${productionWeek.month_name} ${productionWeek.year}`;
+    const afterPeriod = `${data.month_name || "-"} ${data.year || "-"}`;
+    const beforeCustomer = currentCustomer ? `${currentCustomer.name} (${currentCustomer.code})` : "Global";
+    const afterCustomer = nextCustomer ? `${nextCustomer.name} (${nextCustomer.code})` : "Global";
+    const beforeTotalWeeks = Number(productionWeek.total_weeks ?? productionWeek.num_weeks ?? 0);
+    const afterTotalWeeks = Number(data.num_weeks || 0);
 
     return (
         <AdminLayout>
             <div className="min-h-screen bg-gray-50/40 pt-2 pb-8 px-5 md:px-8 font-sans">
+                <Breadcrumb items={[{ label: "Masters" }, { label: "Production Weeks", href: route("production-week.index") }, { label: "Edit Monthly" }]} />
 
-                {/* Breadcrumb */}
-                <div className="flex items-center gap-2 mb-6 text-sm">
-                    <span className="text-gray-500">Menu</span>
-                    <ChevronRightIcon className="w-4 h-4 text-gray-400" />
-                    <Link href={route("production-weeks.index")} className="text-gray-500 hover:text-[#1D6F42]">
-                        Production Weeks
-                    </Link>
-                    <ChevronRightIcon className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-800 font-medium">Edit</span>
-                </div>
-
-                <div className="max-w-2xl">
-
-                    {/* Warning jika data sudah dipakai */}
+                <div className="w-full">
                     {isLocked && (
                         <div className="mb-5 flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
                             <ExclamationTriangleIcon className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
                             <div>
-                                <p className="text-sm font-medium text-amber-800">Perhatian</p>
+                                <p className="text-sm font-medium text-amber-800">Monthly update</p>
                                 <p className="text-xs text-amber-700 mt-0.5">
-                                    Week ini sudah{" "}
-                                    {hasCalendar && "memiliki kalender produksi"}
-                                    {hasCalendar && hasSrHeaders && " dan "}
-                                    {hasSrHeaders && "digunakan oleh SR"}.
-                                    Mengubah <strong>week_start</strong> akan mempengaruhi konversi ETD. Pastikan kamu yakin sebelum menyimpan.
+                                    Period and customer changes will be applied to every week in this month.
                                 </p>
                             </div>
                         </div>
                     )}
 
                     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                        {/* Header */}
-                        <div className="flex items-center justify-between p-6 border-b border-gray-100">
+                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 p-6 border-b border-gray-100">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                                <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
                                     <CalendarDaysIcon className="w-5 h-5 text-amber-600" />
                                 </div>
                                 <div>
-                                    <h1 className="text-lg font-semibold text-gray-900">Edit Production Week</h1>
-                                    <p className="text-xs text-gray-400 font-mono">ID #{productionWeek.id}</p>
+                                    <h1 className="text-xl font-semibold text-gray-900">Edit Monthly Production Week</h1>
+                                    <p className="text-sm text-gray-500 mt-0.5">
+                                        {productionWeek.month_name} {productionWeek.year} is used for {productionWeek.total_weeks} week{Number(productionWeek.total_weeks) === 1 ? "" : "s"}.
+                                    </p>
                                 </div>
                             </div>
-                            {/* Badge info asal */}
-                            <span className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 font-medium">
-                                {productionWeek.customer?.name} · {productionWeek.month_name} {productionWeek.year} W{productionWeek.week_no}
-                            </span>
+                            <div className="flex flex-wrap gap-2">
+                                <SummaryPill label="Current" value={beforePeriod} />
+                                <SummaryPill label="Weeks" value={`${afterTotalWeeks} weeks`} />
+                            </div>
                         </div>
 
-                        {/* Form */}
-                        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-
-                            {/* Customer */}
-                            <FormField label="Customer" required error={errors.customer_id}>
-                                <select
-                                    value={data.customer_id}
-                                    onChange={e => setData("customer_id", e.target.value)}
-                                    className={inputCls(errors.customer_id)}
-                                >
-                                    <option value="">Pilih customer...</option>
-                                    {customers.map(c => (
-                                        <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
-                                    ))}
-                                </select>
-                            </FormField>
-
-                            {/* Year + Month */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <FormField label="Tahun" required error={errors.year}>
-                                    <input
-                                        type="number"
-                                        min={2020} max={2050}
-                                        value={data.year}
-                                        onChange={e => setData("year", e.target.value)}
-                                        className={inputCls(errors.year)}
-                                    />
-                                </FormField>
-
-                                <FormField label="Bulan" required error={errors.month_number}>
-                                    <select
-                                        value={data.month_number}
-                                        onChange={e => handleMonthChange(e.target.value)}
-                                        className={inputCls(errors.month_number)}
-                                    >
-                                        <option value="">Pilih bulan...</option>
-                                        {Object.entries(MONTH_MAP).map(([num, name]) => (
-                                            <option key={num} value={num}>{num} — {name}</option>
-                                        ))}
-                                    </select>
-                                    {data.month_name && (
-                                        <p className="mt-1 text-xs text-gray-400">
-                                            Nama bulan: <span className="font-mono font-medium text-[#1D6F42]">{data.month_name}</span>
-                                        </p>
-                                    )}
-                                </FormField>
-                            </div>
-
-                            {/* Week No + Num Weeks */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <FormField label="Week ke-" required error={errors.week_no}>
-                                    <div className="flex gap-2">
-                                        {[1,2,3,4,5,6].map(n => (
-                                            <button
-                                                key={n}
-                                                type="button"
-                                                onClick={() => setData("week_no", n)}
-                                                className={`flex-1 h-10 rounded-lg text-sm font-semibold border transition-all ${
-                                                    data.week_no === n
-                                                        ? "bg-[#1D6F42] text-white border-[#1D6F42]"
-                                                        : "bg-white text-gray-600 border-gray-200 hover:border-[#1D6F42]/40"
-                                                }`}
-                                            >
-                                                {n}
-                                            </button>
-                                        ))}
+                        <form onSubmit={handleSubmit}>
+                            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px]">
+                                <div className="p-6 lg:p-8 space-y-6">
+                                    <div>
+                                        <h2 className="text-sm font-semibold text-gray-900">Data yang Diubah</h2>
+                                        <p className="mt-1 text-sm text-gray-500">Update the customer, period, date range, or total weeks for this production month.</p>
                                     </div>
-                                </FormField>
 
-                                <FormField label="Jumlah minggu" required error={errors.num_weeks} hint="Biasanya 4 atau 5">
-                                    <div className="flex gap-2">
-                                        {[4, 5].map(n => (
-                                            <button
-                                                key={n}
-                                                type="button"
-                                                onClick={() => setData("num_weeks", n)}
-                                                className={`flex-1 h-10 rounded-lg text-sm font-semibold border transition-all ${
-                                                    data.num_weeks === n
-                                                        ? "bg-[#1D6F42] text-white border-[#1D6F42]"
-                                                        : "bg-white text-gray-600 border-gray-200 hover:border-[#1D6F42]/40"
-                                                }`}
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                        <div className="lg:col-span-2">
+                                            <FormField label="Customer" error={errors.customer_id} hint="Leave empty for a global production week.">
+                                                <select
+                                                    value={data.customer_id}
+                                                    onChange={(e) => setData("customer_id", e.target.value)}
+                                                    className={inputCls(errors.customer_id)}
+                                                >
+                                                    <option value="">Global (no customer)</option>
+                                                    {customers.map((customer) => (
+                                                        <option key={customer.id} value={customer.id}>
+                                                            {customer.name} ({customer.code})
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </FormField>
+                                        </div>
+
+                                        <FormField label="Year" required error={errors.year}>
+                                            <input
+                                                type="number"
+                                                min={2020}
+                                                max={2030}
+                                                value={data.year}
+                                                onChange={(e) => setData("year", e.target.value)}
+                                                className={inputCls(errors.year)}
+                                            />
+                                        </FormField>
+
+                                        <FormField label="Month" required error={errors.month_number}>
+                                            <select
+                                                value={data.month_number}
+                                                onChange={(e) => handleMonthChange(e.target.value)}
+                                                className={inputCls(errors.month_number)}
                                             >
-                                                {n} minggu
-                                            </button>
-                                        ))}
+                                                <option value="">Select month...</option>
+                                                {Object.entries(MONTH_MAP).map(([num, name]) => (
+                                                    <option key={num} value={num}>
+                                                        {num} - {name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </FormField>
+
+                                        <FormField
+                                            label="Start Date"
+                                            required
+                                            error={errors.start_date}
+                                            hint="Tanggal awal untuk week pertama."
+                                        >
+                                            <input
+                                                type="date"
+                                                value={data.start_date}
+                                                onChange={(e) => setData("start_date", e.target.value)}
+                                                className={inputCls(errors.start_date)}
+                                            />
+                                        </FormField>
+
+                                        <FormField
+                                            label="End Date"
+                                            required
+                                            error={errors.end_date}
+                                            hint="Tanggal akhir untuk range bulan ini."
+                                        >
+                                            <input
+                                                type="date"
+                                                value={data.end_date}
+                                                onChange={(e) => setData("end_date", e.target.value)}
+                                                className={inputCls(errors.end_date)}
+                                            />
+                                        </FormField>
+
+                                        <FormField label="Total weeks in month" required error={errors.num_weeks}>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {[3, 4, 5].map((weekCount) => (
+                                                    <button
+                                                        key={weekCount}
+                                                        type="button"
+                                                        onClick={() => setData("num_weeks", weekCount)}
+                                                        className={`h-10 rounded-lg text-sm font-semibold border transition-all ${
+                                                            Number(data.num_weeks) === weekCount
+                                                                ? "bg-[#1D6F42] text-white border-[#1D6F42]"
+                                                                : "bg-white text-gray-600 border-gray-200 hover:border-[#1D6F42]/40"
+                                                        }`}
+                                                    >
+                                                        {weekCount}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </FormField>
                                     </div>
-                                </FormField>
-                            </div>
 
-                            {/* Week Start */}
-                            <FormField
-                                label="Tanggal mulai (week_start)"
-                                required
-                                error={errors.week_start}
-                                hint={isLocked
-                                    ? "⚠️ Mengubah tanggal ini akan mempengaruhi konversi ETD yang sudah ada."
-                                    : "Boleh beda bulan — misal Mei Week 1 bisa mulai 29 April."}
-                            >
-                                <input
-                                    type="date"
-                                    value={data.week_start}
-                                    onChange={e => setData("week_start", e.target.value)}
-                                    className={inputCls(errors.week_start)}
-                                />
-                            </FormField>
-
-                            {/* Preview perubahan */}
-                            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                                <p className="text-xs font-medium text-gray-600 mb-2">Ringkasan perubahan</p>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <DiffRow
-                                        label="Customer"
-                                        before={productionWeek.customer?.name}
-                                        after={customers.find(c => c.id == data.customer_id)?.name}
-                                    />
-                                    <DiffRow
-                                        label="Periode"
-                                        before={`${productionWeek.month_name} ${productionWeek.year}`}
-                                        after={`${data.month_name} ${data.year}`}
-                                    />
-                                    <DiffRow
-                                        label="Week"
-                                        before={`W${productionWeek.week_no} (${productionWeek.num_weeks} minggu)`}
-                                        after={`W${data.week_no} (${data.num_weeks} minggu)`}
-                                    />
-                                    <DiffRow
-                                        label="Week Start"
-                                        before={productionWeek.week_start?.substring(0,10)}
-                                        after={data.week_start}
-                                    />
+                                    <div className="border-t border-gray-100 pt-5">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            <InfoStrip label="Start Date" value={formatDate(data.start_date)} />
+                                            <InfoStrip label="End Date" value={formatDate(data.end_date)} />
+                                            <InfoStrip label="Total Weeks" value={String(afterTotalWeeks)} />
+                                        </div>
+                                    </div>
                                 </div>
+
+                                <aside className="border-t xl:border-t-0 xl:border-l border-gray-100 bg-gray-50/70 p-6 lg:p-8">
+                                    <div>
+                                        <h2 className="text-sm font-semibold text-gray-900">Change Summary</h2>
+                                        <p className="mt-1 text-sm text-gray-500">Review perubahan sebelum disimpan.</p>
+                                    </div>
+
+                                    <div className="mt-5 divide-y divide-gray-200/80">
+                                        <DiffRow label="Customer" before={beforeCustomer} after={afterCustomer} />
+                                        <DiffRow label="Periode" before={beforePeriod} after={afterPeriod} />
+                                        <DiffRow
+                                            label="Date Range"
+                                            before={`${formatDate(productionWeek.start_date)} ~ ${formatDate(productionWeek.end_date)}`}
+                                            after={`${formatDate(data.start_date)} ~ ${formatDate(data.end_date)}`}
+                                        />
+                                        <DiffRow label="Total Weeks" before={String(beforeTotalWeeks)} after={String(afterTotalWeeks)} />
+                                    </div>
+
+                                    <div className="mt-6 border-t border-gray-200/80 pt-5">
+                                        <h3 className="text-sm font-semibold text-gray-900">Preview Week</h3>
+                                        <div className="mt-3 space-y-2">
+                                            {weekPreview.map((week) => (
+                                                <div key={week.week_no} className="flex items-center justify-between gap-3 border-b border-gray-200/70 py-2.5 last:border-b-0">
+                                                    <p className="text-sm font-semibold text-[#1D6F42]">Week {week.week_no}</p>
+                                                    <p className="text-right text-xs font-mono text-gray-700">
+                                                        {formatDate(week.start)}<br />
+                                                        {formatDate(week.end)}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </aside>
                             </div>
 
-                            {/* Actions */}
-                            <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                            <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 px-6 lg:px-8 py-5 border-t border-gray-100 bg-white">
                                 <Link
-                                    href={route("production-weeks.index")}
-                                    className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-all"
+                                    href={route("production-week.index")}
+                                    className="inline-flex justify-center px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-all"
                                 >
-                                    Batal
+                                    Cancel
                                 </Link>
                                 <button
                                     type="submit"
                                     disabled={processing}
-                                    className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#1D6F42] text-white text-sm font-medium rounded-xl hover:bg-[#185c38] disabled:opacity-50 transition-all shadow-sm active:scale-[0.98]"
+                                    className="inline-flex justify-center items-center gap-2 px-6 py-2.5 bg-[#1D6F42] text-white text-sm font-medium rounded-xl hover:bg-[#185c38] disabled:opacity-50 transition-all shadow-sm active:scale-[0.98]"
                                 >
-                                    {processing && (
-                                        <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-                                        </svg>
-                                    )}
-                                    {processing ? "Menyimpan..." : "Simpan Perubahan"}
+                                    {processing ? "Saving..." : "Save Changes"}
                                 </button>
                             </div>
                         </form>
@@ -252,10 +288,9 @@ export default function Edit({ productionWeek, customers }) {
     );
 }
 
-// ── Helpers ───────────────────────────────────────────────────
-const inputCls = (err) =>
+const inputCls = (error) =>
     `w-full h-10 px-3 bg-white border rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 transition-all ${
-        err
+        error
             ? "border-red-300 focus:ring-red-200 focus:border-red-400"
             : "border-gray-200 focus:ring-[#1D6F42]/20 focus:border-[#1D6F42]"
     }`;
@@ -268,27 +303,64 @@ function FormField({ label, required, error, hint, children }) {
                 {required && <span className="text-red-500 ml-0.5">*</span>}
             </label>
             {children}
-            {hint && !error && (
-                <p className={`mt-1 text-xs ${hint.startsWith("⚠️") ? "text-amber-600" : "text-gray-400"}`}>{hint}</p>
-            )}
+            {hint && !error && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
             {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+        </div>
+    );
+}
+
+function SummaryPill({ label, value }) {
+    return (
+        <div className="min-w-28 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+            <p className="text-[11px] font-medium uppercase text-gray-400">{label}</p>
+            <p className="mt-0.5 max-w-48 truncate text-sm font-semibold text-gray-900">{value}</p>
+        </div>
+    );
+}
+
+function InfoStrip({ label, value }) {
+    return (
+        <div className="border-l-2 border-amber-500 bg-gray-50 px-3 py-2">
+            <p className="text-xs text-gray-500">{label}</p>
+            <p className="mt-0.5 truncate text-sm font-semibold text-gray-900">{value}</p>
         </div>
     );
 }
 
 function DiffRow({ label, before, after }) {
     const changed = String(before ?? "") !== String(after ?? "");
+
     return (
-        <div className="text-xs">
-            <span className="text-gray-400">{label}: </span>
+        <div className="py-3">
+            <p className="text-xs font-medium text-gray-400">{label}</p>
             {changed ? (
-                <span>
-                    <span className="line-through text-red-400 mr-1">{before ?? "—"}</span>
-                    <span className="font-medium text-[#1D6F42]">{after ?? "—"}</span>
-                </span>
+                <div className="mt-1 space-y-1">
+                    <p className="text-sm text-red-500 line-through">{before ?? "-"}</p>
+                    <p className="text-sm font-semibold text-[#1D6F42]">{after ?? "-"}</p>
+                </div>
             ) : (
-                <span className="text-gray-600">{after ?? "—"}</span>
+                <p className="mt-1 text-sm font-medium text-gray-700">{after ?? "-"}</p>
             )}
         </div>
     );
 }
+
+const addDays = (value, days) => {
+    const date = new Date(`${value}T00:00:00`);
+    date.setDate(date.getDate() + days);
+    return toDateInput(date);
+};
+
+const pad = (value) => String(value).padStart(2, "0");
+
+const toDateInput = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+
+const formatDate = (value) => {
+    if (!value) return "-";
+
+    return new Date(`${value}T00:00:00`).toLocaleDateString("id-ID", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+    });
+};

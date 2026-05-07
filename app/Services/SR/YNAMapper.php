@@ -28,7 +28,7 @@ use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
  *
  *   Kolom data (J onward = index 9+):
  *     - Setiap kolom = satu minggu pengiriman
- *     - ETD dan Net SELALU ada; ETA sering kosong → fallback = ETD + 42 hari
+ *     - ETD dan Net SELALU ada; ETA sering kosong dan dibiarkan kosong
  *     - Tidak ada label FIRM/FORECAST → semua di-set 'FIRM'
  *
  * WINDOW FILTER:
@@ -42,9 +42,6 @@ class YNAMapper implements SRMapperInterface
 
     // Nama sheet yang dibaca
     private const SHEET_NAME = 'Final SR';
-
-    // ETA fallback: ETD + N hari jika ETA row kosong
-    private const ETA_FALLBACK_DAYS = 42;
 
     public function map(
         array   $sheet,
@@ -213,6 +210,13 @@ class YNAMapper implements SRMapperInterface
         // ── +5: Net (qty) row ─────────────────────────────────────────────
         $netRow   = $allRows[$psaIdx + 5];
         $netLabel = $this->cleanString($netRow[8] ?? null); // col I
+        $model    = $this->cleanString($netRow[6] ?? null) ?: null; // col G = Car line value
+
+        $familyRow   = $allRows[$psaIdx + 6] ?? [];
+        $familyLabel = $this->cleanString($familyRow[5] ?? null); // col F
+        $family      = $familyLabel === 'Family'
+            ? ($this->cleanString($familyRow[6] ?? null) ?: null)
+            : null;
 
         // Validasi label ETD — wajib ada
         if ($etdLabel !== 'ETD Date') {
@@ -226,7 +230,7 @@ class YNAMapper implements SRMapperInterface
             return [];
         }
 
-        // ETA label boleh tidak ada (akan fallback)
+        // ETA label boleh tidak ada.
         $hasEtaRow = ($etaLabel === 'ETA Date');
 
         // ── Loop kolom data ───────────────────────────────────────────────
@@ -241,10 +245,9 @@ class YNAMapper implements SRMapperInterface
                 continue;
             }
 
-            // ETA — fallback ke ETD + 42 hari jika baris ETA tidak ada atau nilai kosong
+            // ETA mengikuti file SR. Jika kosong, simpan null agar Summary sama seperti SR.
             $etaRaw = $hasEtaRow ? ($etaRow[$colIdx] ?? null) : null;
-            $eta    = $this->parseDateValue($etaRaw)
-                      ?? $etd->copy()->addDays(self::ETA_FALLBACK_DAYS);
+            $eta    = $this->parseDateValue($etaRaw);
 
             // Qty — Parse dengan robust handling
             $qtyRaw = $netRow[$colIdx] ?? null;
@@ -281,22 +284,25 @@ class YNAMapper implements SRMapperInterface
                 'source_file'   => null,
                 'part_number'   => $partNumber,
                 'qty'           => $qty,
-                'delivery_date' => $eta->toDateString(),
-                'eta'           => $eta->toDateString(),
+                'delivery_date' => $eta?->toDateString(),
+                'eta'           => $eta?->toDateString(),
                 'etd'           => $etd->toDateString(),
                 'week'          => $weekInfo['week'] ?? null,
-                'month'         => $weekInfo['month'] ?? $eta->format('Y-m'),
+                'month'         => $weekInfo['month'] ?? $etd->format('Y-m'),
+                'year'          => $weekInfo['year'] ?? $etd->year,
                 'order_type'    => 'FIRM',
-                'model'         => null,
-                'family'        => null,
+                'model'         => $model,
+                'family'        => $family,
                 'route'         => null,
                 'port'          => null,
                 'extra'         => json_encode([
                     'row'          => $psaIdx + 1,
                     'col'          => $colIdx + 1,
                     'etd_raw'      => $etd->toDateString(),
-                    'eta_fallback' => ($this->parseDateValue($etaRaw) === null),
+                    'eta_fallback' => false,
                     'week_source'  => $weekInfo['source'] ?? 'manual',
+                    'model_source' => $model ? 'sr_car_line' : null,
+                    'family_source'=> $family ? 'sr_family' : null,
                 ]),
             ];
         }
@@ -423,25 +429,45 @@ class YNAMapper implements SRMapperInterface
 
     private function resolveWeekFromEtd(?int $customerId, Carbon $etd): array
     {
-        $week = null;
-        if ($customerId !== null) {
-            $week = ProductionWeek::findByDate($customerId, $etd);
-        }
-
-        if ($week) {
-            return [
-                'week'   => $week->week_no,
-                'month'  => $week->month_name,
-                'year'   => $week->year,
-                'source' => 'production_week',
-            ];
-        }
+        $weekInfo = $this->getYNAWeekInfo($etd);
 
         return [
-            'week'   => null,
-            'month'  => $etd->format('Y-m'),
+            'week'   => $weekInfo['week'],
+            'month'  => $weekInfo['month_year'],
             'year'   => $etd->year,
-            'source' => 'fallback',
+            'source' => 'yna_etd',
+        ];
+    }
+
+    private function getYNAWeekInfo(Carbon $date): array
+    {
+        $weekMonday = $date->copy()->startOfWeek(Carbon::MONDAY);
+        $remainingDaysInMonth = $weekMonday->daysInMonth - $weekMonday->day + 1;
+        $weekMonthDate = $weekMonday->copy();
+
+        if ($remainingDaysInMonth <= 1) {
+            $weekMonthDate->addMonthNoOverflow();
+        }
+
+        $targetYear = $weekMonthDate->year;
+        $targetMonth = $weekMonthDate->month;
+
+        $firstOfMonth = Carbon::create($targetYear, $targetMonth, 1);
+        $firstMonday = $firstOfMonth->copy()->startOfWeek(Carbon::MONDAY);
+
+        if ($firstMonday->month !== $targetMonth) {
+            $prevMonthRemaining = $firstMonday->daysInMonth - $firstMonday->day + 1;
+            if ($prevMonthRemaining > 1) {
+                $firstMonday->addWeek();
+            }
+        }
+
+        $daysFromFirstMonday = $firstMonday->diffInDays($weekMonday, false);
+        $weekNumber = intdiv($daysFromFirstMonday, 7) + 1;
+
+        return [
+            'week'       => min($weekNumber, 5),
+            'month_year' => $weekMonthDate->format('Y-m'),
         ];
     }
 

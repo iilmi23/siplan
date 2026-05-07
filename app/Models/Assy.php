@@ -27,7 +27,7 @@ class Assy extends Model
     // Relasi
     public function carline()
     {
-        return $this->belongsTo(Carline::class, 'carline_id', 'id');
+        return $this->belongsTo(CarLine::class, 'carline_id', 'id');
     }
 
     public function spp()

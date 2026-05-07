@@ -241,7 +241,6 @@ class SAIMapper implements SRMapperInterface
                     'customer'      => 'SAI',
                     'source_file'   => null,
                     'part_number'   => $partNumber,
-                    'assy_no'       => $buppin, // BUPPIN sebagai ASSY NO
                     'qty'           => $qty,
                     'delivery_date' => $info['eta']->toDateString(),
                     'eta'           => $info['eta']->toDateString(),

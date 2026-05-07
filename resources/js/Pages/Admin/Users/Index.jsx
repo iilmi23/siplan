@@ -8,9 +8,7 @@ export default function Index({ users }) {
     const getRoleBadge = (role) => {
         const badges = {
             admin: 'bg-red-100 text-red-800',
-            ppc_staff: 'bg-blue-100 text-blue-800',
-            ppc_supervisor: 'bg-yellow-100 text-yellow-800',
-            ppc_manager: 'bg-green-100 text-green-800',
+            ppc: 'bg-blue-100 text-blue-800',
         };
         return badges[role] || 'bg-gray-100 text-gray-800';
     };
@@ -18,16 +16,14 @@ export default function Index({ users }) {
     const getRoleLabel = (role) => {
         const labels = {
             admin: 'Admin',
-            ppc_staff: 'PPC Staff',
-            ppc_supervisor: 'PPC Supervisor',
-            ppc_manager: 'PPC Manager',
+            ppc: 'PPC',
         };
         return labels[role] || role;
     };
 
     return (
         <AdminLayout title="User Management">
-            <Head title="User Management | SIMSR" />
+            <Head title="User Management | SIPLAN" />
 
             <div className="min-h-screen bg-gray-50/40 pt-2 pb-8 px-5 md:px-8">
                 {/* Header */}
@@ -76,9 +72,6 @@ export default function Index({ users }) {
                                         Role
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Status
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Created
                                     </th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -111,15 +104,6 @@ export default function Index({ users }) {
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getRoleBadge(user.role)}`}>
                                                 {getRoleLabel(user.role)}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                                user.email_verified_at
-                                                    ? 'bg-green-100 text-green-800'
-                                                    : 'bg-yellow-100 text-yellow-800'
-                                            }`}>
-                                                {user.email_verified_at ? 'Verified' : 'Unverified'}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

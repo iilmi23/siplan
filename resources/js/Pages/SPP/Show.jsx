@@ -1,12 +1,17 @@
 ﻿import AdminLayout from "@/Layouts/AdminLayout";
 import { router } from "@inertiajs/react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
-export default function SPPShow({ customers, filters, period, records, summary }) {
+export default function SPPShow({ customers, srBatches = [], filters, period, records, summary }) {
     const [customer, setCustomer] = useState(filters.customer || "");
+    const [srBatch, setSrBatch] = useState(filters.sr_batch || "");
+
+    const selectedSr = useMemo(() => {
+        return srBatches.find((batch) => String(batch.id) === String(srBatch)) || summary.selected_sr || null;
+    }, [srBatches, srBatch, summary.selected_sr]);
 
     const handleFilter = () => {
-        router.get(`/spp/${period}`, { customer }, {
+        router.get(`/spp/${period}`, buildQuery({ customer, sr_batch: srBatch }), {
             preserveState: true,
             preserveScroll: true,
         });
@@ -14,6 +19,7 @@ export default function SPPShow({ customers, filters, period, records, summary }
 
     const handleReset = () => {
         setCustomer("");
+        setSrBatch("");
         router.get(`/spp/${period}`, {}, {
             preserveState: true,
             preserveScroll: true,
@@ -28,11 +34,14 @@ export default function SPPShow({ customers, filters, period, records, summary }
                         <div className="flex flex-col gap-2">
                             <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">SPP Details</h1>
                             <p className="text-sm text-gray-500">Period: {summary.period}</p>
+                            <p className="text-sm text-gray-500">
+                                SR: {selectedSr ? `${selectedSr.source_file || "-"}${selectedSr.sheet_name ? ` / ${selectedSr.sheet_name}` : ""}` : "Semua upload"}
+                            </p>
                         </div>
                     </div>
 
                     <div className="px-6 pb-6 border-b border-gray-100">
-                        <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr_1fr] items-end">
+                        <div className="grid gap-4 lg:grid-cols-[1.2fr_1.5fr_1fr] items-end">
                             <div>
                                 <label htmlFor="customer" className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
                                 <select
@@ -40,12 +49,33 @@ export default function SPPShow({ customers, filters, period, records, summary }
                                     name="customer"
                                     className="w-full border border-gray-300 px-3 py-2 rounded-lg text-sm text-gray-900 focus:border-[#1D6F42] focus:ring-[#1D6F42]/20"
                                     value={customer}
-                                    onChange={(e) => setCustomer(e.target.value)}
+                                    onChange={(e) => {
+                                        setCustomer(e.target.value);
+                                        setSrBatch("");
+                                    }}
                                 >
                                     <option value="">All Customer</option>
                                     {customers.map((customerItem) => (
                                         <option key={customerItem.code} value={customerItem.code}>
                                             {customerItem.code}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label htmlFor="sr_batch" className="block text-sm font-medium text-gray-700 mb-1">SR Upload</label>
+                                <select
+                                    id="sr_batch"
+                                    name="sr_batch"
+                                    className="w-full border border-gray-300 px-3 py-2 rounded-lg text-sm text-gray-900 focus:border-[#1D6F42] focus:ring-[#1D6F42]/20"
+                                    value={srBatch}
+                                    onChange={(e) => setSrBatch(e.target.value)}
+                                >
+                                    <option value="">Semua SR Upload</option>
+                                    {srBatches.map((batch) => (
+                                        <option key={batch.id} value={batch.id}>
+                                            {batch.label}{batch.uploaded_at ? ` (${batch.uploaded_at})` : ""}
                                         </option>
                                     ))}
                                 </select>
@@ -107,7 +137,7 @@ export default function SPPShow({ customers, filters, period, records, summary }
                                                 <td className="p-3 text-gray-900">{record.customer}</td>
                                                 <td className="p-3 text-gray-900">{record.part_number}</td>
                                                 <td className="p-3 text-right text-gray-900">{record.eta}</td>
-                                                <td className="p-3 text-right text-gray-900">{record.qty}</td>
+                                                <td className="p-3 text-right text-gray-900">{record.total_qty ?? record.qty}</td>
                                             </tr>
                                         ))
                                     )}
@@ -118,5 +148,11 @@ export default function SPPShow({ customers, filters, period, records, summary }
                 </div>
             </div>
         </AdminLayout>
+    );
+}
+
+function buildQuery(filters) {
+    return Object.fromEntries(
+        Object.entries(filters).filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "")
     );
 }

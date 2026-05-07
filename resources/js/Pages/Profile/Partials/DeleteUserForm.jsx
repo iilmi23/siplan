@@ -1,10 +1,7 @@
-import DangerButton from '@/Components/DangerButton';
 import InputError from '@/Components/InputError';
-import InputLabel from '@/Components/InputLabel';
 import Modal from '@/Components/Modal';
-import SecondaryButton from '@/Components/SecondaryButton';
-import TextInput from '@/Components/TextInput';
 import { useForm } from '@inertiajs/react';
+import { ExclamationTriangleIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useRef, useState } from 'react';
 
 export default function DeleteUserForm({ className = '' }) {
@@ -46,45 +43,43 @@ export default function DeleteUserForm({ className = '' }) {
     };
 
     return (
-        <section className={`space-y-6 ${className}`}>
-            <header>
-                <h2 className="text-lg font-medium text-gray-900">
-                    Delete Account
-                </h2>
+        <section className={`space-y-4 ${className}`}>
+            <p className="text-sm leading-6 text-gray-600">
+                Deleting this account removes access permanently and signs you out immediately.
+            </p>
 
-                <p className="mt-1 text-sm text-gray-600">
-                    Once your account is deleted, all of its resources and data
-                    will be permanently deleted. Before deleting your account,
-                    please download any data or information that you wish to
-                    retain.
-                </p>
-            </header>
-
-            <DangerButton onClick={confirmUserDeletion}>
+            <button
+                type="button"
+                onClick={confirmUserDeletion}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+            >
+                <TrashIcon className="h-4 w-4" />
                 Delete Account
-            </DangerButton>
+            </button>
 
-            <Modal show={confirmingUserDeletion} onClose={closeModal}>
+            <Modal show={confirmingUserDeletion} onClose={closeModal} maxWidth="lg">
                 <form onSubmit={deleteUser} className="p-6">
-                    <h2 className="text-lg font-medium text-gray-900">
-                        Are you sure you want to delete your account?
-                    </h2>
+                    <div className="flex items-start gap-4">
+                        <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
+                            <ExclamationTriangleIcon className="h-6 w-6" />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-bold text-gray-900">
+                                Delete this account?
+                            </h2>
 
-                    <p className="mt-1 text-sm text-gray-600">
-                        Once your account is deleted, all of its resources and
-                        data will be permanently deleted. Please enter your
-                        password to confirm you would like to permanently delete
-                        your account.
-                    </p>
+                            <p className="mt-1 text-sm leading-6 text-gray-600">
+                                Enter your password to confirm permanent deletion.
+                            </p>
+                        </div>
+                    </div>
 
                     <div className="mt-6">
-                        <InputLabel
-                            htmlFor="password"
-                            value="Password"
-                            className="sr-only"
-                        />
+                        <label htmlFor="password" className="text-xs font-bold uppercase text-gray-500">
+                            Password
+                        </label>
 
-                        <TextInput
+                        <input
                             id="password"
                             type="password"
                             name="password"
@@ -93,8 +88,8 @@ export default function DeleteUserForm({ className = '' }) {
                             onChange={(e) =>
                                 setData('password', e.target.value)
                             }
-                            className="mt-1 block w-3/4"
-                            isFocused
+                            className="mt-2 block w-full rounded-lg border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm transition focus:border-red-500 focus:ring-red-500"
+                            autoFocus
                             placeholder="Password"
                         />
 
@@ -104,14 +99,24 @@ export default function DeleteUserForm({ className = '' }) {
                         />
                     </div>
 
-                    <div className="mt-6 flex justify-end">
-                        <SecondaryButton onClick={closeModal}>
+                    <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                        <button
+                            type="button"
+                            onClick={closeModal}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-2"
+                        >
+                            <XMarkIcon className="h-4 w-4" />
                             Cancel
-                        </SecondaryButton>
+                        </button>
 
-                        <DangerButton className="ms-3" disabled={processing}>
+                        <button
+                            type="submit"
+                            disabled={processing}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            <TrashIcon className="h-4 w-4" />
                             Delete Account
-                        </DangerButton>
+                        </button>
                     </div>
                 </form>
             </Modal>

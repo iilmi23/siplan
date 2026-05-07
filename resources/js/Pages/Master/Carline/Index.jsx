@@ -1,4 +1,5 @@
 import AdminLayout from "@/Layouts/AdminLayout";
+import Breadcrumb from "@/Components/Admin/Breadcrumb";
 import { Link, router, useForm } from "@inertiajs/react";
 import { useEffect, useState, useMemo } from "react";
 import {
@@ -9,12 +10,12 @@ import {
     PencilIcon,
     TrashIcon,
     PlusIcon,
-    ChevronRightIcon,
     FunnelIcon,
     ArrowUpIcon,
     ArrowDownIcon,
     ChevronUpDownIcon,
-    DocumentArrowUpIcon
+    DocumentArrowUpIcon,
+    ArrowPathIcon
 } from "@heroicons/react/24/outline";
 
 export default function Index({ carlines, flash, filters }) {
@@ -134,6 +135,15 @@ export default function Index({ carlines, flash, filters }) {
         });
     };
 
+    const handleSyncSirep = () => {
+        setIsProcessing(true);
+
+        router.post(window.route("carline.sync-sirep"), {}, {
+            preserveScroll: true,
+            onFinish: () => setIsProcessing(false),
+        });
+    };
+
     const openAddModal = () => {
         reset();
         setShowAddModal(true);
@@ -163,14 +173,7 @@ export default function Index({ carlines, flash, filters }) {
     return (
         <AdminLayout>
             <div className="min-h-screen bg-gray-50/40 pt-2 pb-8 px-5 md:px-8 font-sans">
-                {/* Breadcrumb */}
-                <div className="flex items-center gap-2 mb-4 text-sm">
-                    <Link href="/dashboard" className="text-gray-600 hover:text-[#1D6F42] transition-colors">
-                        Home
-                    </Link>
-                    <ChevronRightIcon className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-900 font-medium">Carline</span>
-                </div>
+                <Breadcrumb items={[{ label: "Masters" }, { label: "Carline" }]} />
 
                 {/* Success Alert */}
                 {showSuccess && successMessage && (
@@ -239,6 +242,15 @@ export default function Index({ carlines, flash, filters }) {
                             </p>
                         </div>
                         <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={handleSyncSirep}
+                                disabled={isProcessing}
+                                className="inline-flex items-center gap-2 h-11 px-5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 hover:text-[#1D6F42] hover:border-[#1D6F42]/30 transition-all disabled:opacity-60"
+                            >
+                                <ArrowPathIcon className={`w-5 h-5 ${isProcessing ? "animate-spin" : ""}`} />
+                                Sync SIREP
+                            </button>
                             <Link
                                 href={route("carline.import")}
                                 className="inline-flex items-center gap-2 h-11 px-5 bg-[#1D6F42] text-white rounded-xl hover:bg-[#185c38] transition-all shadow-sm active:scale-[0.98]"

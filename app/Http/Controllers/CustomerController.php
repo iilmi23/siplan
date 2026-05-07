@@ -104,4 +104,12 @@ class CustomerController extends Controller
         return redirect()->back()
             ->with('flash', ['success' => 'Customer successfully deleted!']);
     }
+
+    public function apiIndex()
+    {
+        $customers = Customer::latest()->get();
+        return response()->json([
+            'data' => $customers
+        ]);
+    }
 }

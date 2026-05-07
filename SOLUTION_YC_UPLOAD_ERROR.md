@@ -145,7 +145,7 @@ const handleSubmit = () => {
 
 ### Step 1: Rebuild Frontend (jika development mode)
 ```bash
-cd /d c:\laragon\www\simsr
+cd /d c:\laragon\www\siplan
 
 # Jika pakai npm
 npm run dev

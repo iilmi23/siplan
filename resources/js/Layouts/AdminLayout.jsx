@@ -56,7 +56,7 @@ export default function AdminLayout({ title, children }) {
     };
 
     const pageTitle = title || getTitleFromUrl(url);
-    const headTitle = pageTitle ? `${pageTitle} | SIMSR` : 'SIMSR';
+    const headTitle = pageTitle ? `${pageTitle} | SIPLAN` : 'SIPLAN';
 
     const offset = sidebarOpen ? SIDEBAR_EXPANDED_W : SIDEBAR_COLLAPSED_W;
 

@@ -13,4 +13,19 @@ class Customer extends Model
     {
         return $this->hasMany(Port::class);
     }
+
+    public function uploadBatches()
+    {
+        return $this->hasMany(UploadBatch::class);
+    }
+
+    public function srMappingTemplates()
+    {
+        return $this->hasMany(SRMappingTemplate::class);
+    }
+
+    public function activeSrMappingTemplate()
+    {
+        return $this->hasOne(SRMappingTemplate::class)->where('is_active', true)->latestOfMany();
+    }
 }

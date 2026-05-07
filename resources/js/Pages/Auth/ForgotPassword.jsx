@@ -17,7 +17,7 @@ export default function ForgotPassword({ status }) {
 
     return (
         <>
-            <Head title="Forgot Password - SIMSR" />
+            <Head title="Forgot Password - SIPLAN" />
 
             {/* Background Image Full Screen - SAMA DENGAN LOGIN */}
             <div 
@@ -149,7 +149,7 @@ export default function ForgotPassword({ status }) {
 
                         {/* FOOTER - SAMA DENGAN LOGIN */}
                         {/*<p className="text-center text-xs text-gray-500 mt-6">
-                            SIMSR • PT Jatim Autocomp Indonesia
+                            SIPLAN • PT Jatim Autocomp Indonesia
                         </p>*/}
 
                     </div>

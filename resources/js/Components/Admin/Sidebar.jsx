@@ -65,6 +65,12 @@ const Icons = {
                 d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
     ),
+    Variance: () => (
+        <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6"
+                d="M7 17l4-4 3 3 5-6M7 7h10M7 12h3m-7 8h18" />
+        </svg>
+    ),
     SPP: () => (
         <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6"
@@ -107,12 +113,12 @@ const MENU_SECTIONS = [
                 name: 'Dashboard',
                 icon: 'Dashboard',
                 route: 'dashboard',
-                roles: ['admin', 'staff', 'ppc_staff', 'ppc_supervisor', 'ppc_manager'],
+                roles: ['admin', 'ppc'],
             },
             {
                 name: 'Masters',
                 icon: 'Master',
-                roles: ['admin'],
+                roles: ['admin', 'ppc'],
                 submenu: [
                     // {
                     //     name: 'Time Chart',
@@ -133,22 +139,28 @@ const MENU_SECTIONS = [
                         roles: ['admin'],
                     },
                     {
+                        name: 'SR Templates',
+                        icon: 'Summary',
+                        route: 'sr-mapping-templates.index',
+                        roles: ['admin'],
+                    },
+                    {
                        name: 'Week',
                         icon: 'ProductionWeek',
                         route: 'production-week.index',
-                        roles: ['admin'], 
+                        roles: ['admin', 'ppc'],
                     },
                     {
                         name: 'Carline',
                         icon: 'Carline',
                         route: 'carline.index',
-                        roles: ['admin'],
+                        roles: ['admin', 'ppc'],
                     },
                     {
                         name: 'Assy',
                         icon: 'Assy',
                         route: 'assy.index',
-                        roles: ['admin'],
+                        roles: ['admin', 'ppc'],
                     },
                 ],
             },
@@ -161,25 +173,31 @@ const MENU_SECTIONS = [
                 name: 'Upload SR',
                 icon: 'UploadSR',
                 route: 'sr.upload.page',
-                roles: ['admin', 'staff', 'ppc_staff', 'ppc_supervisor', 'ppc_manager'],
+                roles: ['admin', 'ppc'],
             },
             {
                 name: 'Summary',
                 icon: 'Summary',
                 route: 'summary.index',
-                roles: ['admin', 'staff', 'ppc_staff', 'ppc_supervisor', 'ppc_manager'],
+                roles: ['admin', 'ppc'],
+            },
+            {
+                name: 'Variance',
+                icon: 'Variance',
+                route: 'variance.index',
+                roles: ['admin', 'ppc'],
             },
             {
                 name: 'SPP',
                 icon: 'SPP',
                 route: 'spp',
-                roles: ['admin', 'staff', 'ppc_staff', 'ppc_supervisor', 'ppc_manager'],
+                roles: ['admin', 'ppc'],
             },
             {
                 name: 'History',
                 icon: 'History',
                 route: 'history',
-                roles: ['admin', 'staff', 'ppc_staff', 'ppc_supervisor', 'ppc_manager'],
+                roles: ['admin', 'ppc'],
             },
         ],
     },
@@ -196,12 +214,6 @@ const MENU_SECTIONS = [
                 name: 'Settings',
                 icon: 'Settings',
                 route: 'settings',
-                roles: ['admin'],
-            },
-            {
-                name: 'Debug Logs',
-                icon: 'Bug',
-                route: 'debug.logs',
                 roles: ['admin'],
             },
         ],
@@ -257,7 +269,7 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
         return null;
     }
 
-    const role = user.role ?? 'staff';
+    const role = user.role ?? 'ppc';
 
     const filterItemsByRole = (items, currentRole) => {
         return items
@@ -490,8 +502,8 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
                 }}>
                     <Link href={getRouteUrl('dashboard')} style={{ display: 'flex', alignItems: 'center' }}>
                         {sidebarOpen
-                            ? <img src="/images/jai.jpg" alt="SIMSR" style={{ height: 34, width: 'auto', objectFit: 'contain' }} />
-                            : <img src="/images/jai.jpg" alt="SIMSR" style={{ height: 30, width: 30, objectFit: 'contain' }} />
+                            ? <img src="/images/jai.jpg" alt="SIPLAN" style={{ height: 34, width: 'auto', objectFit: 'contain' }} />
+                            : <img src="/images/jai.jpg" alt="SIPLAN" style={{ height: 30, width: 30, objectFit: 'contain' }} />
                         }
                     </Link>
                 </div>

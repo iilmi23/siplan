@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'sirep' => [
+        'assy_endpoint' => env('SIREP_ASSY_ENDPOINT', 'http://192.168.50.202:8001/api/shared/assy'),
+        'carline_endpoint' => env('SIREP_CARLINE_ENDPOINT', 'http://192.168.50.202:8001/api/shared/carline'),
+        'timeout' => env('SIREP_TIMEOUT', 30),
+    ],
+
 ];

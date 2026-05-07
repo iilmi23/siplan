@@ -1,4 +1,5 @@
 import AdminLayout from "@/Layouts/AdminLayout";
+import Breadcrumb from "@/Components/Admin/Breadcrumb";
 import { Link, router, usePage } from "@inertiajs/react";
 import { useEffect, useState, useMemo } from "react";
 import {
@@ -7,7 +8,6 @@ import {
     CheckCircleIcon,
     ExclamationTriangleIcon,
     DocumentArrowUpIcon,
-    ChevronRightIcon,
     CalendarIcon,
     ClockIcon
 } from "@heroicons/react/24/outline";
@@ -158,14 +158,7 @@ export default function TimeChartIndex({ customers, timeCharts, flash, year, mon
     return (
         <AdminLayout>
             <div className="min-h-screen bg-gray-50/40 pt-2 pb-8 px-5 md:px-8 font-sans">
-                {/* Breadcrumb */}
-                <div className="flex items-center gap-2 mb-4 text-sm">
-                    <Link href="/dashboard" className="text-gray-600 hover:text-[#1D6F42] transition-colors">
-                        Home
-                    </Link>
-                    <ChevronRightIcon className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-900 font-medium">Time Chart</span>
-                </div>
+                <Breadcrumb items={[{ label: "Masters" }, { label: "Time Chart" }]} />
 
                 {/* Success Alert */}
                 {showSuccess && successMessage && (

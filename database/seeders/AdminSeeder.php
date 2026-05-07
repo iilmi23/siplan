@@ -25,7 +25,7 @@ class AdminSeeder extends Seeder
             ]
         );
 
-        // Buat user staff PPC
+        // Buat user PPC
         User::updateOrCreate(
             ['email' => 'ppc1@jai.co.id'], // Cek berdasarkan email
             [
@@ -33,10 +33,10 @@ class AdminSeeder extends Seeder
                 'email' => 'ppc1@jai.co.id',
                 'password' => Hash::make('jai2026!'),
                 'email_verified_at' => now(), // Langsung verified
-                'role' => 'ppc_staff',
+                'role' => 'ppc',
             ]
         );
 
-        $this->command->info('Admin and Staff users created successfully!');
+        $this->command->info('Admin and PPC users created successfully!');
     }
 }

@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Carline;
+use App\Services\SirepMasterSyncService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Reader\Exception as ReaderException;
+use Throwable;
 
 class CarlineController extends Controller
 {
@@ -18,7 +20,7 @@ class CarlineController extends Controller
             $query->where('code', 'like', "%{$request->search}%");
         }
 
-        $carlines = $query->orderBy('code')->paginate(15);
+        $carlines = $query->orderBy('code')->get();
 
         return Inertia::render('Master/Carline/Index', [
             'carlines' => $carlines,
@@ -75,6 +77,22 @@ class CarlineController extends Controller
 
         return redirect()->route('carline.index')
             ->with('success', 'Carline berhasil dihapus');
+    }
+
+    public function syncSirep(SirepMasterSyncService $service)
+    {
+        try {
+            $result = $service->syncCarlines();
+
+            return back()->with('success', sprintf(
+                'Sync SIREP Carline selesai. %d created, %d updated, %d skipped.',
+                $result['created'],
+                $result['updated'],
+                $result['skipped']
+            ));
+        } catch (Throwable $e) {
+            return back()->with('error', 'Sync SIREP Carline gagal: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -277,5 +295,22 @@ class CarlineController extends Controller
     public function importPage()
     {
         return Inertia::render('Master/Carline/Import');
+    }
+
+    public function apiIndex(Request $request)
+    {
+        $query = Carline::withCount('assy');
+
+        if ($request->filled('search')) {
+            $query->where('code', 'like', "%{$request->search}%");
+        }
+
+        $carlines = $query->orderBy('code')->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $carlines,
+            'count' => $carlines->count()
+        ]);
     }
 }

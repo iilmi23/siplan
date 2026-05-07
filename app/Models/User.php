@@ -23,6 +23,7 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'email_verified_at',
     ];
 
     /**
@@ -48,21 +49,13 @@ class User extends Authenticatable
         ];
     }
 
-    protected function normalizeRole(string $role): string
-    {
-        return match ($role) {
-            'staff', 'ppc_staff' => 'ppc_staff',
-            default => $role,
-        };
-    }
-
     public function hasRole(array|string $roles): bool
     {
-        $currentRole = $this->normalizeRole($this->role ?? 'staff');
-        $roles = is_array($roles) ? $roles : [$roles];
-        $normalizedRoles = array_map(fn ($role) => $this->normalizeRole($role), $roles);
+        $roles = collect(is_array($roles) ? $roles : [$roles])
+            ->map(fn (string $role) => strtolower(trim($role)))
+            ->all();
 
-        return in_array($currentRole, $normalizedRoles, true);
+        return in_array($this->role, $roles, true);
     }
 
     public function isAdmin(): bool
@@ -72,17 +65,25 @@ class User extends Authenticatable
 
     public function isStaff(): bool
     {
-        return $this->hasRole(['staff', 'ppc_staff']);
+        return $this->hasRole('ppc');
     }
 
     public function getRoleLabelAttribute(): string
     {
         return match ($this->role) {
             'admin' => 'Admin',
-            'ppc_staff', 'staff' => 'PPC Staff',
-            'ppc_supervisor' => 'PPC Supervisor',
-            'ppc_manager' => 'PPC Manager',
-            default => 'Staff',
+            'ppc' => 'PPC',
+            default => 'PPC',
         };
+    }
+
+    public function getRoleAttribute(?string $value): string
+    {
+        return strtolower(trim($value ?: 'ppc'));
+    }
+
+    public function setRoleAttribute(?string $value): void
+    {
+        $this->attributes['role'] = strtolower(trim($value ?: 'ppc'));
     }
 }

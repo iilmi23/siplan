@@ -9,12 +9,14 @@ use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Imports\AssyMasterImport;
+use App\Services\SirepMasterSyncService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+use Throwable;
 
 class AssyController extends Controller
 {
@@ -133,6 +135,26 @@ class AssyController extends Controller
         return back()->with('success', 'Status assy berhasil diubah');
     }
 
+    public function syncSirep(SirepMasterSyncService $service)
+    {
+        try {
+            $result = $service->syncAssy();
+            $assy = $result['assy'];
+            $carline = $result['carline'];
+
+            return back()->with('success', sprintf(
+                'Sync SIREP Assy selesai. Assy: %d created, %d updated, %d skipped. Carline dari Assy: %d created, %d updated.',
+                $assy['created'],
+                $assy['updated'],
+                $assy['skipped'],
+                $carline['created'],
+                $carline['updated']
+            ));
+        } catch (Throwable $e) {
+            return back()->with('error', 'Sync SIREP Assy gagal: ' . $e->getMessage());
+        }
+    }
+
     public function search(Request $request)
     {
         $search = $request->get('q');
@@ -182,9 +204,15 @@ class AssyController extends Controller
     /**
      * Download template Excel berdasarkan Car Line yang dipilih
      */
-    public function downloadTemplate($carline_id)
+    public function downloadTemplate(Request $request)
     {
         try {
+            $carline_id = $request->route('carline_id') ?? $request->query('carline_id');
+            
+            if (!$carline_id) {
+                return response()->json(['error' => 'Car Line ID is required'], 400);
+            }
+            
             $carline = Carline::findOrFail($carline_id);
 
             // Create Excel file
@@ -293,11 +321,14 @@ class AssyController extends Controller
             // Add empty rows for user input
             for ($i = 0; $i < 10; $i++) {
                 $row = $startRow + count($samples) + $i;
-                $sheet->getStyle('A' . $row . ':F' . $row)
-                    ->getBorders()
-                    ->getAllBorders()
-                    ->setBorderStyle(Border::BORDER_THIN)
-                    ->setColor(['rgb' => 'CCCCCC']);
+                $sheet->getStyle('A' . $row . ':F' . $row)->applyFromArray([
+                    'borders' => [
+                        'allBorders' => [
+                            'borderStyle' => Border::BORDER_THIN,
+                            'color' => ['rgb' => 'CCCCCC'],
+                        ],
+                    ],
+                ]);
             }
 
             // Instructions sheet
@@ -331,12 +362,12 @@ class AssyController extends Controller
                 ['- std_pack: Minimal 1', ''],
                 ['', ''],
                 ['Catatan Penting:', ''],
-                ['✓ Car Line sudah ditentukan, tidak perlu diisi', ''],
-                ['✓ part_number harus unique dalam 1 Car Line', ''],
-                ['✓ File maksimal 1000 baris data', ''],
-                ['✓ Format file: .xlsx, .xls, atau .csv', ''],
-                ['✓ Baris pertama (header) tidak akan diimport', ''],
-                ['✓ Data contoh bisa dihapus atau diganti dengan data asli', ''],
+                ['- Car Line sudah ditentukan, tidak perlu diisi', ''],
+                ['- part_number harus unique dalam 1 Car Line', ''],
+                ['- File maksimal 1000 baris data', ''],
+                ['- Format file: .xlsx, .xls, atau .csv', ''],
+                ['- Baris pertama (header) tidak akan diimport', ''],
+                ['- Data contoh bisa dihapus atau diganti dengan data asli', ''],
             ];
 
             $row = 1;
@@ -372,7 +403,7 @@ class AssyController extends Controller
             exit();
             
         } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'Gagal generate template: ' . $e->getMessage());
+            return response()->json(['error' => 'Gagal generate template: ' . $e->getMessage()], 500);
         }
     }
 

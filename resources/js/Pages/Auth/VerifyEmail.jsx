@@ -17,7 +17,7 @@ export default function VerifyEmail({ status }) {
 
     return (
         <>
-            <Head title="Verify Email - SIMSR" />
+            <Head title="Verify Email - SIPLAN" />
 
             {/* Background Image Full Screen - SAMA DENGAN HALAMAN LAIN */}
             <div 
@@ -163,7 +163,7 @@ export default function VerifyEmail({ status }) {
 
                         {/* FOOTER - SAMA DENGAN HALAMAN LAIN */}
                         {/*<p className="text-center text-xs text-gray-500 mt-6">
-                            SIMSR • PT Jatim Autocomp Indonesia
+                            SIPLAN • PT Jatim Autocomp Indonesia
                         </p>*/}
 
                     </div>

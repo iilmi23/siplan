@@ -4,7 +4,7 @@ import { createInertiaApp } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createRoot } from 'react-dom/client';
 
-const appName = import.meta.env.VITE_APP_NAME || 'SIMSR';
+const appName = import.meta.env.VITE_APP_NAME || 'SIPLAN';
 
 createInertiaApp({
     title: (title) => title,
@@ -25,57 +25,6 @@ createInertiaApp({
     },
 });
 
-// Suppress browser extension message passing errors (non-critical)
-// These errors are common when Chrome extensions try to communicate with pages
-const isExtensionError = (message = '') => {
-    const msg = String(message).toLowerCase();
-    return msg.includes('message channel closed') || 
-           msg.includes('asynchronous response') ||
-           msg.includes('a listener indicated') ||
-           msg.includes('extension context invalidated') ||
-           msg.includes('the page you are on') ||
-           msg.includes('chrome-extension://');
-};
-
-// Handle synchronous errors
-window.addEventListener('error', (event) => {
-    if (isExtensionError(event.message)) {
-        event.preventDefault();
-        return true;
-    }
-}, true); // Use capture phase to catch early
-
-// Handle promise rejections
-window.addEventListener('unhandledrejection', (event) => {
-    const reason = event.reason;
-    const message = reason?.message || reason?.toString() || '';
-    
-    if (isExtensionError(message)) {
-        event.preventDefault();
-    }
-}, true); // Use capture phase
-
-// Override Chrome extension message handler
-if (typeof window !== 'undefined' && window.chrome?.runtime) {
-    try {
-        // Listen for messages and always respond
-        if (window.chrome.runtime.onMessage) {
-            window.chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-                try {
-                    sendResponse({ received: true });
-                } catch (err) {
-                    // Ignore if port is already closed
-                }
-                // Returning true indicates you want to send a response asynchronously
-                // But we already sent it synchronously, so return false
-                return false;
-            });
-        }
-    } catch (e) {
-        // Ignore initialization errors
-    }
-}
-
 const ROUTES = {
     'sanctum.csrf-cookie': '/sanctum/csrf-cookie',
     dashboard: '/dashboard',
@@ -94,12 +43,21 @@ const ROUTES = {
     'customers.ports.edit': '/customers/{customer}/ports/{port}/edit',
     'customers.ports.update': '/customers/{customer}/ports/{port}',
     'customers.ports.destroy': '/customers/{customer}/ports/{port}',
+    'sr-mapping-templates.index': '/sr-mapping-templates',
+    'sr-mapping-templates.create': '/sr-mapping-templates/create',
+    'sr-mapping-templates.store': '/sr-mapping-templates',
+    'sr-mapping-templates.edit': '/sr-mapping-templates/{sr_mapping_template}/edit',
+    'sr-mapping-templates.update': '/sr-mapping-templates/{sr_mapping_template}',
+    'sr-mapping-templates.destroy': '/sr-mapping-templates/{sr_mapping_template}',
+    'sr-mapping-templates.preview-excel': '/sr-mapping-templates/preview-excel',
+    'sr-mapping-templates.validate-preview': '/sr-mapping-templates/validate-preview',
     'ports.index': '/ports',
     'carline.index': '/carline',
     'carline.importPage': '/carline/import',
     'carline.getSheets': '/carline/get-sheets',
     'carline.previewSheet': '/carline/preview-sheet',
     'carline.import': '/carline/import',
+    'carline.sync-sirep': '/carline/sync-sirep',
     'carline.create': '/carline/create',
     'carline.store': '/carline',
     'carline.show': '/carline/{carline}',
@@ -111,11 +69,14 @@ const ROUTES = {
 
     'production-week.index': '/production-week',
     'production-week.create': '/production-week/create',
+    'production-week.import-page': '/production-week/import',
     'production-week.store': '/production-week',
+    'production-week.download-template': '/production-week/download-template',
+    'production-week.import': '/production-week/import',
     'production-week.show': '/production-week/{week}',
-    'production-week.edit': '/production-week/{week}/edit',
-    'production-week.update': '/production-week/{week}',
-    'production-week.destroy': '/production-week/{week}',
+    'production-week.edit': '/production-week/edit',
+    'production-week.update': '/production-week/update',
+    'production-week.destroy': '/production-week/delete',
 
     'assy.index': '/assy',
     'assy.importPage': '/assy/import',
@@ -132,6 +93,7 @@ const ROUTES = {
     'assy.getSheets': '/assy/get-sheets',
     'assy.previewSheet': '/assy/preview-sheet',
     'assy.import': '/assy/import-data',
+    'assy.sync-sirep': '/assy/sync-sirep',
 
 
     'sr.upload.page': '/sr/upload',
@@ -143,11 +105,12 @@ const ROUTES = {
     'summary.data': '/summary/{id}/data',
     'summary.export': '/summary/{id}/export',
     'summary.destroy': '/summary/{id}',
+    'variance.index': '/variance',
     spp: '/spp',
+    'spp.preview': '/spp/preview/{id}',
     'spp.show': '/spp/{period}',
     history: '/history',
     settings: '/settings',
-    'debug.logs': '/debug/logs',
     'profile.edit': '/profile',
     'profile.update': '/profile',
     'profile.destroy': '/profile',
@@ -163,13 +126,13 @@ const ROUTES = {
     'password.confirm': '/confirm-password',
     'password.update': '/password',
     logout: '/logout',
-    'users.index': '/admin/users',
-    'users.create': '/admin/users/create',
-    'users.store': '/admin/users',
-    'users.show': '/admin/users/{user}',
-    'users.edit': '/admin/users/{user}/edit',
-    'users.update': '/admin/users/{user}',
-    'users.destroy': '/admin/users/{user}',
+    'users.index': '/users',
+    'users.create': '/users/create',
+    'users.store': '/users',
+    'users.show': '/users/{user}',
+    'users.edit': '/users/{user}/edit',
+    'users.update': '/users/{user}',
+    'users.destroy': '/users/{user}',
 };
 
 const routeHelper = (name, params = {}, absolute = false) => {

@@ -21,15 +21,13 @@ export default function Edit({ user }) {
     };
 
     const roles = [
-        { value: 'ppc_staff', label: 'PPC Staff' },
-        { value: 'ppc_supervisor', label: 'PPC Supervisor' },
-        { value: 'ppc_manager', label: 'PPC Manager' },
+        { value: 'ppc', label: 'PPC' },
         { value: 'admin', label: 'Admin' },
     ];
 
     return (
         <AdminLayout title="Edit User">
-            <Head title="Edit User | SIMSR" />
+            <Head title="Edit User | SIPLAN" />
 
             <div className="min-h-screen bg-gray-50/40 pt-2 pb-8 px-5 md:px-8">
                 {/* Header */}

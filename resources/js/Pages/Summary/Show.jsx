@@ -19,22 +19,97 @@ const fmtDate = (d) => {
     return `${p.getMonth() + 1}/${p.getDate()}`;
 };
 
+const normalizeWeek = (week) => {
+    if (week === null || typeof week === "undefined" || week === "") return "";
+    if (week === "TOT") return "TOT";
+    const match = String(week).match(/\d+/);
+    return match ? Number(match[0]) : week;
+};
+
+const periodKey = (etd, eta, week) => `${etd || ""}|${eta || ""}|${normalizeWeek(week)}`;
+const ynaPeriodKey = (etd) => `${etd || ""}`;
+const hasFallbackEta = (item) => item?.extra?.eta_fallback === true;
+
+const parseDateOnly = (value) => {
+    if (!value) return null;
+    const [year, month, day] = String(value).slice(0, 10).split("-").map(Number);
+    if (!year || !month || !day) return null;
+    return new Date(year, month - 1, day);
+};
+
+const addDays = (date, days) => {
+    const next = new Date(date);
+    next.setDate(next.getDate() + days);
+    return next;
+};
+
+const addMonthsNoOverflow = (date, months) => {
+    const next = new Date(date);
+    next.setMonth(next.getMonth() + months, 1);
+    return next;
+};
+
+const daysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+
+const startOfMondayWeek = (date) => {
+    const day = date.getDay() || 7;
+    return addDays(date, 1 - day);
+};
+
+const diffDays = (start, end) => Math.round((end - start) / 86400000);
+
+const calculateYNAWeek = (etd) => {
+    const date = parseDateOnly(etd);
+    if (!date) return "";
+
+    const weekMonday = startOfMondayWeek(date);
+    const remainingDaysInMonth = daysInMonth(weekMonday) - weekMonday.getDate() + 1;
+    const weekMonthDate = remainingDaysInMonth <= 1 ? addMonthsNoOverflow(weekMonday, 1) : new Date(weekMonday);
+    const targetYear = weekMonthDate.getFullYear();
+    const targetMonth = weekMonthDate.getMonth();
+
+    const firstOfMonth = new Date(targetYear, targetMonth, 1);
+    let firstMonday = startOfMondayWeek(firstOfMonth);
+
+    if (firstMonday.getMonth() !== targetMonth) {
+        const prevMonthRemaining = daysInMonth(firstMonday) - firstMonday.getDate() + 1;
+        if (prevMonthRemaining > 1) {
+            firstMonday = addDays(firstMonday, 7);
+        }
+    }
+
+    const weekNumber = Math.floor(diffDays(firstMonday, weekMonday) / 7) + 1;
+    return Math.min(weekNumber, 5);
+};
+
+const displayWeek = (item, isYNAFormat) => isYNAFormat ? calculateYNAWeek(item.etd) : normalizeWeek(item.week);
+
 // ─── Excel-Like Pivot Preview ─────────────────────────────────────────────────
 function PivotPreview({ data, customer }) {
     // Determine format based on customer
     const isYNAFormat = customer?.toUpperCase() === 'YNA';
     
-    // Build sorted unique periods (ETD|ETA pairs)
+    // Build sorted unique periods. YNA follows SR columns, so ETD is the key.
     const periods = useMemo(() => {
         const map = {};
         data.forEach((item) => {
-            const key = `${item.etd}|${item.eta}`;
+            const key = isYNAFormat ? ynaPeriodKey(item.etd) : periodKey(item.etd, item.eta, item.week);
             if (!map[key]) {
-                map[key] = { etd: item.etd, eta: item.eta, etdFmt: fmtDate(item.etd), etaFmt: fmtDate(item.eta) };
+                map[key] = {
+                    key,
+                    etd: item.etd,
+                    eta: isYNAFormat && hasFallbackEta(item) ? "" : item.eta,
+                    week: displayWeek(item, isYNAFormat),
+                    etdFmt: fmtDate(item.etd),
+                    etaFmt: isYNAFormat && hasFallbackEta(item) ? "" : fmtDate(item.eta),
+                };
+            } else if (isYNAFormat && !map[key].eta && item.eta && !hasFallbackEta(item)) {
+                map[key].eta = item.eta;
+                map[key].etaFmt = fmtDate(item.eta);
             }
         });
         return Object.values(map).sort((a, b) => (a.etd || "").localeCompare(b.etd || ""));
-    }, [data]);
+    }, [data, isYNAFormat]);
 
     // Group by part_number → { partNumber: { "etd|eta": qty } }
     const grouped = useMemo(() => {
@@ -42,18 +117,18 @@ function PivotPreview({ data, customer }) {
         data.forEach((item) => {
             const pn = item.part_number || "-";
             if (!g[pn]) g[pn] = { meta: item, qty: {} };
-            const key = `${item.etd}|${item.eta}`;
+            const key = isYNAFormat ? ynaPeriodKey(item.etd) : periodKey(item.etd, item.eta, item.week);
             g[pn].qty[key] = (g[pn].qty[key] || 0) + Number(item.qty || 0);
         });
         // Sort by part_number
         return Object.entries(g).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
-    }, [data]);
+    }, [data, isYNAFormat]);
 
     // Column totals
     const colTotals = useMemo(() => { 
         const totals = {};
         periods.forEach((p) => {
-            const key = `${p.etd}|${p.eta}`;
+            const key = p.key || periodKey(p.etd, p.eta, p.week);
             totals[key] = grouped.reduce((sum, [, v]) => sum + (v.qty[key] || 0), 0);
         });
         return totals;
@@ -76,14 +151,14 @@ function PivotPreview({ data, customer }) {
                         <tr>
                             {/* Fixed left cols */}
                             <th
-                                rowSpan={2}
+                                rowSpan={3}
                                 className="sticky left-0 z-30 border border-[#145233] px-2 py-2 text-center text-white text-[10px] tracking-wider"
                                 style={{ background: "#1D4D2A", minWidth: 32, top: 0 }}
                             >
                                 NO
                             </th>
                             <th
-                                rowSpan={2}
+                                rowSpan={3}
                                 className="sticky z-30 border border-[#145233] px-3 py-2 text-center text-white text-[10px] tracking-wider"
                                 style={{ background: "#1D4D2A", minWidth: 160, left: 32, top: 0 }}
                             >
@@ -97,7 +172,7 @@ function PivotPreview({ data, customer }) {
                             </th>
                             {periods.map((p) => (
                                 <th
-                                    key={`etd-${p.etd}|${p.eta}`}
+                                    key={`etd-${p.key || `${p.etd}|${p.eta}|${p.week}`}`}
                                     className="border border-[#145233] px-1 py-1.5 text-center text-white text-[10px] font-semibold"
                                     style={{ background: "#1D6F42", minWidth: 60 }}
                                 >
@@ -121,7 +196,7 @@ function PivotPreview({ data, customer }) {
                             </th>
                             {periods.map((p) => (
                                 <th
-                                    key={`eta-${p.etd}|${p.eta}`}
+                                    key={`eta-${p.key || `${p.etd}|${p.eta}|${p.week}`}`}
                                     className="border border-[#145233] px-1 py-1.5 text-center text-white text-[10px] font-semibold"
                                     style={{ background: "#2E9E5E", minWidth: 60 }}
                                 >
@@ -133,13 +208,35 @@ function PivotPreview({ data, customer }) {
                                 style={{ background: "#2E9E5E", minWidth: 60 }}
                             />
                         </tr>
+                        {/* Row 3 — WEEK */}
+                        <tr>
+                            <th
+                                className="sticky z-20 border border-[#145233] px-2 py-1.5 text-center text-white text-[10px] tracking-wider"
+                                style={{ background: "#237A50", left: 192, top: 36, minWidth: 44 }}
+                            >
+                                WEEK
+                            </th>
+                            {periods.map((p) => (
+                                <th
+                                    key={`week-${p.key || `${p.etd}|${p.eta}|${p.week}`}`}
+                                    className="border border-[#145233] px-1 py-1.5 text-center text-white text-[10px] font-semibold"
+                                    style={{ background: "#237A50", minWidth: 60 }}
+                                >
+                                    {p.week || "-"}
+                                </th>
+                            ))}
+                            <th
+                                className="border border-[#145233] px-2 py-1.5 text-center text-white text-[10px]"
+                                style={{ background: "#237A50", minWidth: 60 }}
+                            />
+                        </tr>
                     </thead>
 
                     {/* ── TBODY ── */}
                     <tbody>
                         {grouped.map(([partNumber, { qty }], idx) => {
                             const rowBg = idx % 2 === 0 ? "#EAF5EF" : "#C6E8D4";
-                            const rowTotal = periods.reduce((s, p) => s + (qty[`${p.etd}|${p.eta}`] || 0), 0);
+                            const rowTotal = periods.reduce((s, p) => s + (qty[p.key || periodKey(p.etd, p.eta, p.week)] || 0), 0);
                             return (
                                 <tr key={partNumber} style={{ background: rowBg }}>
                                     {/* NO */}
@@ -166,7 +263,7 @@ function PivotPreview({ data, customer }) {
                                     </td>
                                     {/* Values */}
                                     {periods.map((p) => {
-                                        const key = `${p.etd}|${p.eta}`;
+                                        const key = p.key || periodKey(p.etd, p.eta, p.week);
                                         const val = qty[key] || 0;
                                         return (
                                             <td
@@ -213,7 +310,7 @@ function PivotPreview({ data, customer }) {
                                 style={{ background: "#0F3320", left: 192 }}
                             />
                             {periods.map((p) => {
-                                const key = `${p.etd}|${p.eta}`;
+                                const key = p.key || periodKey(p.etd, p.eta, p.week);
                                 const val = colTotals[key] || 0;
                                 return (
                                     <td
@@ -245,7 +342,7 @@ function PivotPreview({ data, customer }) {
         data.forEach((item) => {
             const type = (item.order_type || 'FORECAST').toUpperCase();
             const month = item.month || (item.eta ? new Date(item.eta).toISOString().slice(0, 7) : 'unknown');
-            const key = `${item.etd}|${item.eta}|${item.week}`;
+            const key = periodKey(item.etd, item.eta, item.week);
 
             byTypeMonth[type] = byTypeMonth[type] || {};
             byTypeMonth[type][month] = byTypeMonth[type][month] || {};
@@ -254,7 +351,7 @@ function PivotPreview({ data, customer }) {
                 byTypeMonth[type][month][key] = {
                     type,
                     month,
-                    week: item.week || '',
+                    week: normalizeWeek(item.week),
                     etd: item.etd ? fmtDate(item.etd) : '',
                     eta: item.eta ? fmtDate(item.eta) : '',
                     etd_raw: item.etd || '',
@@ -281,7 +378,7 @@ function PivotPreview({ data, customer }) {
                     result.push({
                         type,
                         month,
-                        week: `${weekCount + 1}W`,
+                        week: weekCount + 1,
                         etd: '',
                         eta: '',
                         etd_raw: '',
@@ -330,7 +427,7 @@ function PivotPreview({ data, customer }) {
         data.forEach((item) => {
             const pn = item.part_number || '-';
             if (!g[pn]) g[pn] = { qty: {} };
-            const key = `${item.etd}|${item.eta}|${item.week}`;
+            const key = periodKey(item.etd, item.eta, item.week);
             g[pn].qty[key] = (g[pn].qty[key] || 0) + Number(item.qty || 0);
         });
         return Object.entries(g).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
@@ -340,7 +437,7 @@ function PivotPreview({ data, customer }) {
         const totals = {};
         periodsWithTotals.forEach((p) => {
             if (p.week === 'TOT') return;
-            const key = `${p.etd_raw}|${p.eta_raw}|${p.week}`;
+            const key = periodKey(p.etd_raw, p.eta_raw, p.week);
             totals[key] = groupedDefault.reduce((sum, [, v]) => sum + (v.qty[key] || 0), 0);
         });
         return totals;
@@ -452,18 +549,18 @@ function PivotPreview({ data, customer }) {
                                     QTY
                                 </td>
                                 {periodsWithTotals.map((p, idx) => {
-                                    const periodKey = `${p.etd_raw}|${p.eta_raw}|${p.week}`;
+                                    const key = periodKey(p.etd_raw, p.eta_raw, p.week);
                                     const val = p.week === 'TOT'
                                         ? Object.keys(qty).reduce((sum, k) => {
                                             const [etdRaw] = k.split('|');
                                             const month = etdRaw ? new Date(etdRaw).toISOString().slice(0, 7) : 'unknown';
                                             return month === p.month ? sum + (qty[k] || 0) : sum;
                                         }, 0)
-                                        : (qty[periodKey] || 0);
+                                        : (qty[key] || 0);
 
                                     return (
                                         <td
-                                            key={`${periodKey}-${idx}`}
+                                            key={`${key}-${idx}`}
                                             className="border px-2 py-1.5 text-right"
                                             style={{
                                                 borderColor: '#8FC9A8',
@@ -508,7 +605,7 @@ function PivotPreview({ data, customer }) {
                                     }, 0);
                                 }, 0)
                                 : groupedDefault.reduce((sum, [, { qty }]) => {
-                                    const key = `${p.etd_raw}|${p.eta_raw}|${p.week}`;
+                                    const key = periodKey(p.etd_raw, p.eta_raw, p.week);
                                     return sum + (qty[key] || 0);
                                 }, 0);
 
@@ -530,7 +627,8 @@ function PivotPreview({ data, customer }) {
 }
 
 // ─── Original List View (unchanged) ──────────────────────────────────────────
-function ListView({ filteredData, totalQty, resetFilters, activeFiltersCount }) {
+function ListView({ filteredData, totalQty, resetFilters, activeFiltersCount, customer }) {
+    const isYNAFormat = customer?.toUpperCase() === "YNA";
     const formatDate = (date) => {
         if (!date) return "-";
         const parsed = new Date(date);
@@ -558,7 +656,7 @@ function ListView({ filteredData, totalQty, resetFilters, activeFiltersCount }) 
                         <table className="min-w-[1200px] border-collapse border border-slate-200 text-sm">
                             <thead className="bg-slate-50">
                                 <tr>
-                                    {["No","Product No.","Model","Family","Week","Type","ETD","ETA","Qty","Route","Port","Month"].map((h) => (
+                                    {["No","Part Number.","Car Model","Family","Week","Type","ETD","ETA","Qty"].map((h) => (
                                         <th key={h} className="sticky top-0 z-10 border border-slate-200 bg-slate-50 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                                             {h}
                                         </th>
@@ -572,7 +670,7 @@ function ListView({ filteredData, totalQty, resetFilters, activeFiltersCount }) 
                                         <td className="border border-slate-200 px-3 py-2 text-slate-800 font-medium">{item.part_number || "-"}</td>
                                         <td className="border border-slate-200 px-3 py-2 text-slate-700">{item.model || "-"}</td>
                                         <td className="border border-slate-200 px-3 py-2 text-slate-700">{item.family || "-"}</td>
-                                        <td className="border border-slate-200 px-3 py-2 text-slate-700">{item.week || "-"}</td>
+                                        <td className="border border-slate-200 px-3 py-2 text-slate-700">{normalizeWeek(item.week) || "-"}</td>
                                         <td className="border border-slate-200 px-3 py-2 text-slate-700">
                                             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                                                 (item.order_type || "").toUpperCase() === "FIRM"
@@ -583,11 +681,13 @@ function ListView({ filteredData, totalQty, resetFilters, activeFiltersCount }) 
                                             </span>
                                         </td>
                                         <td className="border border-slate-200 px-3 py-2 text-slate-700">{formatDate(item.etd)}</td>
-                                        <td className="border border-slate-200 px-3 py-2 text-slate-700">{formatDate(item.eta)}</td>
+                                        <td className="border border-slate-200 px-3 py-2 text-slate-700">
+                                            {isYNAFormat && hasFallbackEta(item) ? "-" : formatDate(item.eta)}
+                                        </td>
                                         <td className="border border-slate-200 px-3 py-2 text-right font-semibold text-slate-900">{Number(item.qty || 0).toLocaleString()}</td>
-                                        <td className="border border-slate-200 px-3 py-2 text-slate-700">{item.route || "-"}</td>
-                                        <td className="border border-slate-200 px-3 py-2 text-slate-700">{item.port || "-"}</td>
-                                        <td className="border border-slate-200 px-3 py-2 text-slate-700">{item.month || "-"}</td>
+                                        {/* <td className="border border-slate-200 px-3 py-2 text-slate-700">{item.route || "-"}</td> */}
+                                        {/* <td className="border border-slate-200 px-3 py-2 text-slate-700">{item.port || "-"}</td>
+                                        <td className="border border-slate-200 px-3 py-2 text-slate-700">{item.month || "-"}</td> */}
                                     </tr>
                                 ))}
                             </tbody>
@@ -595,7 +695,6 @@ function ListView({ filteredData, totalQty, resetFilters, activeFiltersCount }) 
                                 <tr>
                                     <td colSpan="8" className="border border-slate-200 px-3 py-2 text-right text-sm text-slate-900">Total Qty</td>
                                     <td className="border border-slate-200 px-3 py-2 text-right text-sm text-slate-900">{totalQty.toLocaleString()}</td>
-                                    <td className="border border-slate-200 px-3 py-2" /><td className="border border-slate-200 px-3 py-2" /><td className="border border-slate-200 px-3 py-2" />
                                 </tr>
                             </tfoot>
                         </table>
@@ -620,6 +719,9 @@ export default function SummaryShow({ sr, data }) {
     const filteredData = useMemo(() => {
         let filtered = [...data];
 
+        const parseWeek = (w) => Number(normalizeWeek(w)) || 0;
+        const typeRank  = (t) => { const u = (t || "").toUpperCase(); return u === "FIRM" ? 0 : u === "FORECAST" ? 1 : 2; };
+
         if (searchPartNumber)
             filtered = filtered.filter((i) => i.part_number?.toLowerCase().includes(searchPartNumber.toLowerCase()));
 
@@ -638,10 +740,7 @@ export default function SummaryShow({ sr, data }) {
             filtered = filtered.filter((i) => (i.etd && i.etd <= endDate) || (i.eta && i.eta <= endDate));
         }
 
-        if (weekFilter) filtered = filtered.filter((i) => i.week === weekFilter);
-
-        const parseWeek = (w) => { const m = (w || "").toString().match(/(\d+)/); return m ? Number(m[1]) : 0; };
-        const typeRank  = (t) => { const u = (t || "").toUpperCase(); return u === "FIRM" ? 0 : u === "FORECAST" ? 1 : 2; };
+        if (weekFilter) filtered = filtered.filter((i) => parseWeek(i.week) === Number(weekFilter));
 
         return filtered.sort((a, b) => {
             const pn = (a.part_number || "").localeCompare(b.part_number || "", undefined, { numeric: true });
@@ -665,8 +764,16 @@ export default function SummaryShow({ sr, data }) {
     const activeFiltersCount = [searchPartNumber, orderTypeFilter, startDate, endDate, weekFilter].filter(Boolean).length;
 
     const uniqueWeeks = useMemo(() => {
-        const pW = (w) => { const m = (w || "").toString().match(/(\d+)/); return m ? Number(m[1]) : 0; };
-        return [...new Set(data.map((i) => i.week).filter(Boolean))].sort((a, b) => pW(a) - pW(b));
+        const set = new Set();
+        data.forEach((i) => {
+            const n = normalizeWeek(i.week);
+            if (n !== "") set.add(String(n));
+        });
+        return Array.from(set).sort((a, b) => {
+            const na = a === 'TOT' ? 99 : Number(a);
+            const nb = b === 'TOT' ? 99 : Number(b);
+            return na - nb;
+        });
     }, [data]);
 
     return (
@@ -712,12 +819,12 @@ export default function SummaryShow({ sr, data }) {
                         {/* Filter Section */}
                         <div className="flex flex-wrap items-end gap-3">
                             <div className="w-56">
-                                <label className="block text-xs font-medium text-gray-700 mb-1">Product No.</label>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Part Number</label>
                                 <div className="relative">
                                     <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                     <input
                                         type="text"
-                                        placeholder="Product No. or Assy No...."
+                                        placeholder="Part Number or Assy No...."
                                         className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                         value={searchPartNumber}
                                         onChange={(e) => setSearchPartNumber(e.target.value)}
@@ -777,7 +884,7 @@ export default function SummaryShow({ sr, data }) {
                         {activeFiltersCount > 0 && (
                             <div className="flex items-center gap-2 text-sm text-gray-600">
                                 <span className="text-xs text-gray-500">Active filters:</span>
-                                {searchPartNumber && <span className="bg-gray-100 px-2 py-1 rounded-full text-xs">Product: {searchPartNumber}</span>}
+                                {searchPartNumber && <span className="bg-gray-100 px-2 py-1 rounded-full text-xs">Part Number: {searchPartNumber}</span>}
                                 {orderTypeFilter  && <span className="bg-gray-100 px-2 py-1 rounded-full text-xs">{orderTypeFilter}</span>}
                                 {weekFilter       && <span className="bg-gray-100 px-2 py-1 rounded-full text-xs">Week: {weekFilter}</span>}
                                 {(startDate || endDate) && <span className="bg-gray-100 px-2 py-1 rounded-full text-xs">Date: {startDate || "..."} - {endDate || "..."}</span>}
@@ -841,6 +948,7 @@ export default function SummaryShow({ sr, data }) {
                                 totalQty={totalQty}
                                 resetFilters={resetFilters}
                                 activeFiltersCount={activeFiltersCount}
+                                customer={sr.customer}
                             />
                         )}
                     </div>

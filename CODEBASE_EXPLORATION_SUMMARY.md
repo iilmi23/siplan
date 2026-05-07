@@ -1,4 +1,4 @@
-# SIMSR Codebase Exploration Summary
+# SIPLAN Codebase Exploration Summary
 
 ## Overview
 This document provides a comprehensive analysis of the SR (Shipping Request) system, including related models, controllers, upload flow, and database schema.

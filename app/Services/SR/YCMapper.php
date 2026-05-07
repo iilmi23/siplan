@@ -141,11 +141,11 @@ class YCMapper implements SRMapperInterface
         ) ?? self::TIME_CHART_ROW;
 
         $etaRowIdx = $this->detectRowIndexByLabel(
-            $sheet, 'ETA', self::ETA_ROW, self::LABEL_COL, 25
+            $sheet, 'ETA', self::ETA_ROW, self::LABEL_COL, 25, true
         ) ?? self::ETA_ROW;
 
         $etdRowIdx = $this->detectRowIndexByLabel(
-            $sheet, 'ETD', self::ETD_ROW, self::LABEL_COL, 25
+            $sheet, 'ETD', self::ETD_ROW, self::LABEL_COL, 25, true
         ) ?? self::ETD_ROW;
 
         $headerRowIdx = $this->detectHeaderRowIndex($sheet) ?? self::HEADER_ROW;
@@ -641,7 +641,8 @@ class YCMapper implements SRMapperInterface
         string $label,
         int    $defaultIdx,
         int    $labelCol = 0,
-        int    $maxRows  = 25
+        int    $maxRows  = 25,
+        bool   $exact    = false
     ): ?int {
         $limit = min(count($sheet), $maxRows);
         for ($i = 0; $i < $limit; $i++) {
@@ -650,7 +651,8 @@ class YCMapper implements SRMapperInterface
                 continue;
             }
             $cellVal = strtoupper(trim((string) ($row[$labelCol] ?? '')));
-            if (str_contains($cellVal, strtoupper($label))) {
+            $target = strtoupper($label);
+            if ($exact ? $cellVal === $target : str_contains($cellVal, $target)) {
                 return $i;
             }
         }

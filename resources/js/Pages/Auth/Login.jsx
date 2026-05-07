@@ -20,7 +20,7 @@ export default function Login({ status }) {
 
     return (
         <>
-            <Head title="Login SIMSR" />
+            <Head title="Login SIPLAN" />
 
             {/* Background Image Full Screen */}
             <div 
@@ -55,7 +55,7 @@ export default function Login({ status }) {
                         {/* TITLE */}
                         <div className="text-center mb-6">
                             <h1 className="text-2xl font-bold text-gray-800">
-                                Welcome to SIMSR
+                                Welcome to SIPLAN
                             </h1>
                             <p className="text-gray-600 text-sm">
                                 Please login to your account
@@ -171,10 +171,10 @@ export default function Login({ status }) {
                             </p> */}
                         </form>
 
-                        {/* FOOTER */}
-                        {/* <p className="text-center text-xs text-gray-500 mt-6">
-                            2026 - PT Jatim Autocomp Indonesia | All Rights Reserved
-                        </p> */}
+                       {/* Footer */}
+                        <p className="text-center text-xs text-gray-500 mt-6">
+                            © {new Date().getFullYear()} PT Jatim Autocomp Indonesia. All rights reserved.
+                        </p>
 
                     </div>
                 </div>
