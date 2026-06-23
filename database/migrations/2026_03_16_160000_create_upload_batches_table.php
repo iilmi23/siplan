@@ -11,6 +11,7 @@ return new class extends Migration
         Schema::create('upload_batches', function (Blueprint $table) {
             $table->id();
             $table->string('batch_uuid')->unique();
+            $table->string('batch_type', 20)->default('sr');
             $table->foreignId('customer_id')->constrained('customers')->cascadeOnDelete();
             $table->foreignId('port_id')->nullable()->constrained('ports')->nullOnDelete();
             $table->foreignId('uploaded_by')->nullable()->constrained('users')->nullOnDelete();
@@ -23,9 +24,15 @@ return new class extends Migration
             $table->unsignedInteger('unmapped_count')->default(0);
             $table->unsignedInteger('total_qty')->default(0);
             $table->text('notes')->nullable();
+            $table->timestamp('processed_at')->nullable();
+            $table->timestamp('failed_at')->nullable();
+            $table->json('metadata')->nullable();
             $table->timestamps();
 
             $table->index(['customer_id', 'created_at']);
+            $table->index(['batch_type', 'customer_id', 'status', 'created_at'], 'upload_batches_type_customer_status_idx');
+            $table->index(['status', 'customer_id', 'created_at'], 'upload_batches_variance_status_index');
+            $table->index(['customer_id', 'status', 'created_at'], 'upload_batches_customer_status_siplan_idx');
         });
     }
 

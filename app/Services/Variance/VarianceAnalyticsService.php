@@ -7,8 +7,10 @@ use App\Models\Variance\SrVarianceDashboardSummary;
 use App\Models\Variance\SrVarianceForecast;
 use App\Models\Variance\SrVarianceInsight;
 use App\Models\Variance\SrVarianceTrend;
+use App\Services\Variance\AnalyticsCacheService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Auth;
 
 class VarianceAnalyticsService
 {
@@ -101,7 +103,13 @@ class VarianceAnalyticsService
 
     private function latestDashboardSummaries()
     {
-        $latestIds = SrVarianceDashboardSummary::query()
+        $latestIdsQuery = SrVarianceDashboardSummary::query();
+        if (Auth::check() && !Auth::user()?->isAdmin()) {
+            $latestIdsQuery->whereHas('currentBatch', function ($q) {
+                $q->where('uploaded_by', Auth::id());
+            });
+        }
+        $latestIds = $latestIdsQuery
             ->selectRaw('MAX(id) as id')
             ->groupBy('customer_id')
             ->pluck('id');
@@ -118,7 +126,13 @@ class VarianceAnalyticsService
 
     private function customerVarianceTrend(): array
     {
-        $rows = SrVarianceDashboardSummary::query()
+        $rowsQuery = SrVarianceDashboardSummary::query();
+        if (Auth::check() && !Auth::user()?->isAdmin()) {
+            $rowsQuery->whereHas('currentBatch', function ($q) {
+                $q->where('uploaded_by', Auth::id());
+            });
+        }
+        $rows = $rowsQuery
             ->orderByDesc('current_batch_id')
             ->limit(80)
             ->get()
@@ -224,8 +238,16 @@ class VarianceAnalyticsService
 
     private function filteredAnalyticsQuery(array $filters): Builder
     {
-        return SrVarianceAnalytic::query()
-            ->with(['customer:id,code,name', 'currentBatch:id,source_file,created_at', 'previousBatch:id,source_file,created_at'])
+        $query = SrVarianceAnalytic::query()
+            ->with(['customer:id,code,name', 'currentBatch:id,source_file,created_at', 'previousBatch:id,source_file,created_at']);
+
+        if (Auth::check() && !Auth::user()?->isAdmin()) {
+            $query->whereHas('currentBatch', function ($q) {
+                $q->where('uploaded_by', Auth::id());
+            });
+        }
+
+        return $query
             ->when($filters['customer_id'] ?? null, fn ($query, $id) => $query->where('customer_id', $id))
             ->when($filters['batch_id'] ?? null, fn ($query, $id) => $query->where('current_batch_id', $id))
             ->when($filters['assy_number'] ?? null, fn ($query, $assy) => $query->where('assy_number', 'like', "%{$assy}%"))

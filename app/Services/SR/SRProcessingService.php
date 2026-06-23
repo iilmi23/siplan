@@ -3,10 +3,10 @@
 namespace App\Services\SR;
 
 use App\Models\Customer;
-use App\Services\MasterAssyResolverService;
-use App\Services\SRMapperService;
-use App\Services\SRUploadService;
-use App\Services\WeekResolverService;
+use App\Services\Master\MasterAssyResolverService;
+use App\Services\SR\SRMapperService;
+use App\Services\SR\SRUploadService;
+use App\Services\Utilities\WeekResolverService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -30,9 +30,11 @@ class SRProcessingService
         try {
             $customer = Customer::findOrFail($request->customer);
             $sheetIndex = (int) $request->sheet;
-            $tempPath = $this->storeTempFile($request->file('file'));
+            $file = $request->file('file');
+            $tempPath = $this->storeTempFile($file);
+            $originalName = $file ? $file->getClientOriginalName() : null;
 
-            [$mapped] = $this->mapper->mapUploadedSheet($tempPath, $customer, $sheetIndex);
+            [$mapped, $sheetName, $warning] = array_pad($this->mapper->mapUploadedSheet($tempPath, $customer, $sheetIndex, $originalName), 3, null);
 
             if (empty($mapped)) {
                 return response()->json([
@@ -56,6 +58,7 @@ class SRProcessingService
                     'months_covered' => $this->monthsCovered($mapped),
                     'unknown_assy_numbers' => $unknownAssyNumbers,
                     'has_unknown_assy_numbers' => count($unknownAssyNumbers) > 0,
+                    'warning' => $warning,
                     'preview' => array_slice($mapped, 0, 50),
                 ],
             ]);

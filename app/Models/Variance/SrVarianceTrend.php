@@ -27,8 +27,16 @@ class SrVarianceTrend extends Model
     ];
 
     protected $casts = [
+        'customer_id' => 'integer',
+        'year' => 'integer',
+        'month_number' => 'integer',
+        'production_week' => 'integer',
+        'total_previous_qty' => 'integer',
+        'total_current_qty' => 'integer',
+        'total_variance_qty' => 'integer',
         'average_growth' => 'decimal:2',
         'variance_volatility' => 'decimal:2',
+        'trend_duration' => 'integer',
         'calculated_at' => 'datetime',
     ];
 

@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\SirepMasterSyncService;
+use App\Services\Integration\SirepMasterSyncService;
 use Illuminate\Console\Command;
 use Throwable;
 

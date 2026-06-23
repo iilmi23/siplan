@@ -16,6 +16,7 @@ class UploadBatch extends Model
 
     protected $fillable = [
         'batch_uuid',
+        'batch_type',
         'customer_id',
         'port_id',
         'uploaded_by',
@@ -28,6 +29,9 @@ class UploadBatch extends Model
         'unmapped_count',
         'total_qty',
         'notes',
+        'processed_at',
+        'failed_at',
+        'metadata',
     ];
 
     protected $casts = [
@@ -35,6 +39,9 @@ class UploadBatch extends Model
         'mapped_count' => 'integer',
         'unmapped_count' => 'integer',
         'total_qty' => 'integer',
+        'processed_at' => 'datetime',
+        'failed_at' => 'datetime',
+        'metadata' => 'array',
     ];
 
     protected static function booted(): void
@@ -71,5 +78,11 @@ class UploadBatch extends Model
     public function sppRecords()
     {
         return $this->hasMany(SPP::class, 'upload_batch_id');
+    }
+
+    public function sppBatches()
+    {
+        return $this->belongsToMany(SppBatch::class, 'spp_batch_sources')
+            ->withTimestamps();
     }
 }

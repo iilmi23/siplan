@@ -22,11 +22,19 @@ class UpdateAssyRequest extends FormRequest
                 'max:50',
                 Rule::unique('assy')->ignore($this->route('assy')?->id),
             ],
-            'assy_code' => 'required|string|max:20',
+            'assy_code' => [
+                'required',
+                'string',
+                'max:20',
+                Rule::unique('assy')->ignore($this->route('assy')?->id),
+            ],
             'level' => 'required|string|max:20',
-            'type' => 'nullable|string|max:10',
+            'pattern' => 'nullable|string|max:255',
+            'standard_sea_quantity' => 'nullable|integer|min:0',
+            'standard_air_quantity' => 'nullable|integer|min:0',
+            'max_quantity_sea' => 'nullable|integer|min:0',
+            'max_quantity_air' => 'nullable|integer|min:0',
             'umh' => 'required|numeric|min:0|max:9999.999999',
-            'std_pack' => 'required|integer|min:1',
             'is_active' => 'boolean',
         ];
     }

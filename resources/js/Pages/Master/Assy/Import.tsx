@@ -1,0 +1,575 @@
+import AdminLayout from "@/Layouts/AdminLayout";
+import Breadcrumb from "@/Components/Admin/Breadcrumb";
+import { Link, router } from "@inertiajs/react";
+import { useRef, useState } from "react";
+import Alert from "@/Components/Alert";
+import {
+    ArrowDownTrayIcon,
+    ArrowLeftIcon,
+    ArrowPathIcon,
+    CheckCircleIcon,
+    CloudArrowUpIcon,
+    DocumentArrowUpIcon,
+    ExclamationTriangleIcon,
+    EyeIcon,
+    TableCellsIcon,
+    XMarkIcon,
+} from "@heroicons/react/24/outline";
+
+export default function Import({ carlines = [] }) {
+    const fileInputRef = useRef(null);
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [selectedCarline, setSelectedCarline] = useState("");
+    const [sheets, setSheets] = useState([]);
+    const [selectedSheet, setSelectedSheet] = useState("");
+    const [previewData, setPreviewData] = useState([]);
+    const [showPreview, setShowPreview] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [successMessage, setSuccessMessage] = useState("");
+    const [errorMessage, setErrorMessage] = useState("");
+    const [showSuccess, setShowSuccess] = useState(false);
+    const [showError, setShowError] = useState(false);
+    const [showImportConfirm, setShowImportConfirm] = useState(false);
+
+    const previewHeaders = Object.keys(previewData[0] || {});
+    const canPreview = Boolean(selectedFile && selectedSheet && !uploading);
+    const canImport = Boolean(selectedFile && selectedSheet && selectedCarline && showPreview && previewData.length > 0 && !uploading);
+    const templateHref = selectedCarline ? route("assy.download-template", selectedCarline) : "#";
+
+    const notifySuccess = (message) => {
+        setSuccessMessage(message);
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+    };
+
+    const notifyError = (message) => {
+        setErrorMessage(message);
+        setShowError(true);
+        setTimeout(() => setShowError(false), 4000);
+    };
+
+    const getCsrfToken = () => {
+        const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content;
+
+        if (!csrfToken) {
+            throw new Error("CSRF token not found. Please refresh the page.");
+        }
+
+        return csrfToken;
+    };
+
+    const handleFileChange = async (event) => {
+        const file = event.target.files?.[0] ?? null;
+
+        if (!file) {
+            resetFileState();
+            return;
+        }
+
+        const extension = file.name.split(".").pop()?.toLowerCase();
+
+        if (!["xlsx", "xls", "csv"].includes(extension)) {
+            notifyError("Please select a valid Excel file (.xlsx, .xls, or .csv).");
+            event.target.value = "";
+            resetFileState();
+            return;
+        }
+
+        setSelectedFile(file);
+        setSelectedSheet("");
+        setSheets([]);
+        setPreviewData([]);
+        setShowPreview(false);
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        setUploading(true);
+        try {
+            const response = await fetch(route("assy.getSheets"), {
+                method: "POST",
+                body: formData,
+                headers: {
+                    "X-CSRF-TOKEN": getCsrfToken(),
+                },
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                setSheets(result.sheets || []);
+                setSelectedSheet(result.sheets?.[0] || "");
+                notifySuccess("File loaded. Choose a sheet and preview the data.");
+            } else {
+                notifyError(result.message || "Failed to read Excel file.");
+            }
+        } catch (error) {
+            console.error("Error:", error);
+            notifyError(error.message || "Failed to read Excel file. Please check the format.");
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handlePreviewSheet = async () => {
+        if (!selectedFile || !selectedSheet) {
+            notifyError("Please select file and sheet first.");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("sheet", selectedSheet);
+
+        setUploading(true);
+        try {
+            const response = await fetch(route("assy.previewSheet"), {
+                method: "POST",
+                body: formData,
+                headers: {
+                    "X-CSRF-TOKEN": getCsrfToken(),
+                },
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                setPreviewData(result.data || []);
+                setShowPreview(true);
+                notifySuccess("Preview loaded successfully.");
+            } else {
+                notifyError(result.message || "Failed to preview sheet.");
+            }
+        } catch (error) {
+            console.error("Error:", error);
+            notifyError(error.message || "Failed to preview sheet. Please try again.");
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleImportExcel = async () => {
+        if (!selectedFile || !selectedSheet || !selectedCarline) {
+            notifyError("Please select car line, file, and sheet first.");
+            return;
+        }
+
+        if (!showPreview || previewData.length === 0) {
+            notifyError("Please preview the data before importing.");
+            return;
+        }
+
+        setShowImportConfirm(true);
+    };
+
+    const executeImportExcel = async () => {
+        setShowImportConfirm(false);
+        setUploading(true);
+
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("sheet", selectedSheet);
+        formData.append("carline_id", selectedCarline);
+
+        try {
+            const response = await fetch(route("assy.import"), {
+                method: "POST",
+                body: formData,
+                headers: {
+                    "X-CSRF-TOKEN": getCsrfToken(),
+                },
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                notifySuccess(result.message || "Assy data imported successfully.");
+                setTimeout(() => {
+                    router.visit(route("assy.index"));
+                }, 1500);
+            } else {
+                notifyError(result.message || "Failed to import Assy data.");
+            }
+        } catch (error) {
+            console.error("Import failed:", error);
+            notifyError(error.message || "Failed to import Assy data. Please try again.");
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const resetFileState = () => {
+        setSelectedFile(null);
+        setSheets([]);
+        setSelectedSheet("");
+        setPreviewData([]);
+        setShowPreview(false);
+        setShowImportConfirm(false);
+    };
+
+    const resetForm = () => {
+        setSelectedCarline("");
+        resetFileState();
+
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
+    };
+
+    return (
+        <AdminLayout>
+            <div className="min-h-screen bg-gray-50/40 pt-2 pb-8 px-5 md:px-8 font-sans">
+                <Breadcrumb items={[{ label: "Masters" }, { label: "Assy", href: route("assy.index") }, { label: "Import Excel" }]} />
+
+                {showSuccess && successMessage && (
+                    <Alert type="success" message={successMessage} onClose={() => setShowSuccess(false)} />
+                )}
+
+                {showError && errorMessage && (
+                    <Alert type="error" message={errorMessage} onClose={() => setShowError(false)} />
+                )}
+
+                {uploading && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+                        <div className="flex items-center gap-3 rounded-xl bg-white p-6 shadow-xl">
+                            <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#1D6F42] border-t-transparent" />
+                            <span className="text-sm font-medium text-gray-700">Processing...</span>
+                        </div>
+                    </div>
+                )}
+
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="p-6 pb-4 border-b border-gray-100">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                            <div className="flex items-start gap-4">
+                                <Link
+                                    href={route("assy.index")}
+                                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-gray-50 hover:text-[#1D6F42]"
+                                    aria-label="Back to Assy Master"
+                                >
+                                    <ArrowLeftIcon className="h-5 w-5" />
+                                </Link>
+                                <div>
+                                    <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">
+                                        Import Assy Master
+                                    </h1>
+                                    <p className="mt-1 text-sm text-gray-500">
+                                        Upload Excel, select sheet, preview data, then create or update assy master by assy number.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="hidden h-12 w-12 items-center justify-center rounded-xl bg-[#1D6F42]/10 text-[#1D6F42] sm:flex">
+                                <DocumentArrowUpIcon className="h-6 w-6" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-6 space-y-6">
+                        <div className="space-y-6">
+                            <section className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                                <div className="border-b border-gray-100 bg-gray-50/70 px-5 py-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1D6F42]/10 text-[#1D6F42]">
+                                            <CloudArrowUpIcon className="h-5 w-5" />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-sm font-semibold text-gray-900">Upload Setup</h2>
+                                            <p className="text-xs text-gray-500">Select car line, file, and worksheet.</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid gap-5 p-5 lg:grid-cols-2">
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-semibold text-gray-700">
+                                            Car Line <span className="text-red-500">*</span>
+                                        </label>
+                                        <select
+                                            value={selectedCarline}
+                                            onChange={(event) => setSelectedCarline(event.target.value)}
+                                            className={inputClass}
+                                        >
+                                            <option value="">Select Car Line</option>
+                                            <option value="all">All Car Lines (Auto Detect from Excel)</option>
+                                            {carlines.map((carline) => (
+                                                <option key={carline.id} value={carline.id}>
+                                                    {carline.code}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            {selectedCarline === "all"
+                                                ? "Assy data will be created/updated based on the 'carline' column in the Excel file."
+                                                : "Assy data will be created/updated for this Car Line."}
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-semibold text-gray-700">
+                                            Template
+                                        </label>
+                                        <a
+                                            href={templateHref}
+                                            onClick={(event) => {
+                                                if (!selectedCarline) {
+                                                    event.preventDefault();
+                                                    notifyError("Please select a car line before downloading template.");
+                                                }
+                                            }}
+                                            className={`inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border px-4 text-sm font-semibold transition-colors ${
+                                                selectedCarline
+                                                    ? "border-[#1D6F42]/30 bg-[#1D6F42]/10 text-[#1D6F42] hover:bg-[#1D6F42] hover:text-white"
+                                                    : "border-gray-200 bg-gray-50 text-gray-400"
+                                            }`}
+                                        >
+                                            <ArrowDownTrayIcon className="h-4 w-4" />
+                                            Download Template
+                                        </a>
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            {selectedCarline === "all"
+                                                ? "Template contains all Assy data across all Car Lines."
+                                                : "Template contains Assy data for the selected Car Line."}
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-semibold text-gray-700">
+                                            Excel File <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            accept=".xlsx,.xls,.csv"
+                                            onChange={handleFileChange}
+                                            className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-700 transition-all file:mr-3 file:rounded-lg file:border-0 file:bg-[#1D6F42] file:px-4 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-[#185c38] focus:border-[#1D6F42] focus:outline-none focus:ring-2 focus:ring-[#1D6F42]/20"
+                                        />
+                                        {selectedFile && (
+                                            <div className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                                                <CheckCircleIcon className="h-4 w-4 shrink-0" />
+                                                <span className="truncate">
+                                                    Selected: <span className="font-semibold">{selectedFile.name}</span>
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-semibold text-gray-700">
+                                            Worksheet <span className="text-red-500">*</span>
+                                        </label>
+                                        <select
+                                            value={selectedSheet}
+                                            onChange={(event) => {
+                                                setSelectedSheet(event.target.value);
+                                                setShowPreview(false);
+                                                setPreviewData([]);
+                                            }}
+                                            disabled={sheets.length === 0}
+                                            className={`${inputClass} disabled:bg-gray-50 disabled:text-gray-400`}
+                                        >
+                                            {sheets.length === 0 ? (
+                                                <option value="">Select file first</option>
+                                            ) : (
+                                                sheets.map((sheet, index) => (
+                                                    <option key={index} value={sheet}>
+                                                        {sheet}
+                                                    </option>
+                                                ))
+                                            )}
+                                        </select>
+                                        <p className="mt-1 text-xs text-gray-500">Preview reads the selected worksheet only.</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-3 border-t border-gray-100 bg-gray-50/60 px-5 py-4 sm:flex-row sm:items-center">
+                                    <button
+                                        type="button"
+                                        onClick={handlePreviewSheet}
+                                        disabled={!canPreview}
+                                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#1D6F42] bg-white px-5 text-sm font-semibold text-[#1D6F42] transition-colors hover:bg-[#1D6F42] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        <EyeIcon className="h-4 w-4" />
+                                        Preview Data
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleImportExcel}
+                                        disabled={!canImport}
+                                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#1D6F42] px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#185c38] disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        <CloudArrowUpIcon className="h-4 w-4" />
+                                        Import / Update Assy
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={resetForm}
+                                        disabled={uploading}
+                                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                                    >
+                                        <ArrowPathIcon className="h-4 w-4" />
+                                        Reset
+                                    </button>
+                                </div>
+                            </section>
+
+                        <PreviewTable headers={previewHeaders} rows={previewData} showPreview={showPreview} />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {showImportConfirm && (
+                <ConfirmDialog
+                    title="Import / Update Assy"
+                    message={`Data preview contains ${previewData.length} rows. Continue import and update Master Assy?`}
+                    confirmLabel="Import Now"
+                    processing={uploading}
+                    onCancel={() => setShowImportConfirm(false)}
+                    onConfirm={executeImportExcel}
+                />
+            )}
+
+            <style>{`
+                @keyframes slideDown {
+                    from { opacity: 0; transform: translateY(-8px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                .animate-slideDown {
+                    animation: slideDown 0.25s ease-out;
+                }
+            `}</style>
+        </AdminLayout>
+    );
+}
+
+
+function ConfirmDialog({ title, message, confirmLabel, processing, onCancel, onConfirm }) {
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+            <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-xl">
+                <div className="border-b border-gray-100 p-6">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-[#1D6F42]">
+                                <ExclamationTriangleIcon className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+                                <p className="mt-1 text-sm text-gray-500">{message}</p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={onCancel}
+                            disabled={processing}
+                            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50"
+                            aria-label="Close confirmation"
+                        >
+                            <XMarkIcon className="h-4 w-4" />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-3 bg-gray-50 px-6 py-4">
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        disabled={processing}
+                        className="h-10 rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onConfirm}
+                        disabled={processing}
+                        className="h-10 rounded-lg bg-[#1D6F42] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#185c38] disabled:opacity-50"
+                    >
+                        {processing ? "Processing..." : confirmLabel}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function PreviewTable({ headers, rows, showPreview }) {
+    if (!showPreview) {
+        return (
+            <section className="rounded-xl border border-gray-200 bg-white p-10 text-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50">
+                    <TableCellsIcon className="h-8 w-8 text-gray-400" />
+                </div>
+                <h2 className="mt-4 text-base font-semibold text-gray-800">Preview not available</h2>
+                <p className="mt-1 text-sm text-gray-500">Select file and worksheet, then click Preview Data.</p>
+            </section>
+        );
+    }
+
+    return (
+        <section className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+            <div className="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 className="text-sm font-semibold text-gray-900">Data Preview</h2>
+                    <p className="mt-0.5 text-xs text-gray-500">Showing {rows.length} rows from the selected sheet.</p>
+                </div>
+                <span className="w-fit rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                    {rows.length} rows displayed
+                </span>
+            </div>
+
+            <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px]">
+                    <thead>
+                        <tr className="bg-gray-100/80 border-b border-gray-200">
+                            {headers.length > 0 ? headers.map((header, index) => (
+                                <th key={`${header}-${index}`} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-700">
+                                    {formatHeader(header)}
+                                </th>
+                            )) : (
+                                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-700">
+                                    Data
+                                </th>
+                            )}
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {rows.length > 0 ? rows.map((row, rowIndex) => (
+                            <tr key={rowIndex} className="hover:bg-gray-50/70">
+                                {headers.map((header, colIndex) => (
+                                    <td key={`${rowIndex}-${colIndex}`} className="px-4 py-3 text-sm text-gray-600">
+                                        <span className="block max-w-[220px] truncate" title={String(row[header] ?? "")}>
+                                            {formatCell(row[header])}
+                                        </span>
+                                    </td>
+                                ))}
+                            </tr>
+                        )) : (
+                            <tr>
+                                <td colSpan={Math.max(headers.length, 1)} className="px-4 py-10 text-center text-sm text-gray-400">
+                                    No data rows found.
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    );
+}
+
+function formatCell(value) {
+    if (value === null || value === undefined || value === "") {
+        return "-";
+    }
+
+    return String(value);
+}
+
+function formatHeader(value) {
+    return String(value).replace(/standard/gi, "STD");
+}
+
+const inputClass =
+    "w-full h-11 px-4 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1D6F42]/20 focus:border-[#1D6F42] bg-white transition-all";

@@ -1,59 +1,95 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# SIPLAN
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+SIPLAN adalah aplikasi web untuk membantu proses Production Planning and Control, terutama pengelolaan Shipping Release, master data produksi, Summary, Six-Month Production Plan, variance, dan export Excel.
 
-## About Laravel
+Project ini menggunakan Laravel 12 untuk backend, React + Inertia untuk frontend, Vite untuk bundling, dan TypeScript untuk halaman frontend baru.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Mulai Cepat
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+1. Salin konfigurasi environment.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+   ```bash
+   cp .env.example .env
+   ```
 
-## Learning Laravel
+2. Install dependency backend dan frontend.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+   ```bash
+   composer install
+   npm install
+   ```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+3. Siapkan aplikasi dan database.
 
-## Laravel Sponsors
+   ```bash
+   php artisan key:generate
+   php artisan migrate --seed
+   ```
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+4. Jalankan mode pengembangan.
 
-### Premium Partners
+   ```bash
+   composer dev
+   ```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+   Alternatifnya, jalankan backend dan frontend terpisah:
 
-## Contributing
+   ```bash
+   php artisan serve
+   npm run dev
+   ```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Struktur Folder
 
-## Code of Conduct
+| Lokasi | Isi |
+| --- | --- |
+| `app/Http/Controllers` | Controller Laravel untuk halaman dan API web. |
+| `app/Http/Requests` | Validasi request per fitur. |
+| `app/Models` | Model Eloquent dan relasi data. |
+| `app/Services` | Logika bisnis utama seperti upload SR, Summary, SPP, Week Resolver, dan variance. |
+| `app/Exports` | Export Excel. |
+| `database/migrations` | Definisi struktur tabel. |
+| `database/seeders` | Data awal aplikasi. |
+| `resources/js/Pages` | Halaman Inertia React. |
+| `resources/js/Components` | Komponen UI yang dipakai ulang. |
+| `resources/js/Layouts` | Layout utama aplikasi. |
+| `resources/css` | Styling global. |
+| `routes` | Definisi route web, auth, console, dan API. |
+| `storage/templates` | Template file Excel yang dipakai aplikasi. |
+| `tests` | Test feature dan unit. |
+| `docs` | Dokumentasi teknis dan catatan pengembangan. |
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Peta Fitur
 
-## Security Vulnerabilities
+| Fitur | Backend | Frontend |
+| --- | --- | --- |
+| Dashboard | `DashboardController` | `resources/js/Pages/Admin/Dashboard.tsx` |
+| Upload Shipping Release | `SRController`, `SRUploadService`, `app/Services/SR` | `resources/js/Pages/UploadSR/Index.tsx` |
+| Summary | `SummaryController`, `SummaryService`, `SummaryGeneratorService` | `resources/js/Pages/Summary` |
+| SPP | `SPPController`, `SPPService` | `resources/js/Pages/SPP` |
+| Variance | `VarianceController`, `app/Services/Variance` | `resources/js/Pages/Variance` |
+| Master Customer | `CustomerController` | `resources/js/Pages/Master/Customer` |
+| Master Port | `PortController` | `resources/js/Pages/Master/Ports` |
+| Master Carline | `CarlineController`, `CarlineService` | `resources/js/Pages/Master/Carline` |
+| Master Assy | `AssyController`, `AssyService` | `resources/js/Pages/Master/Assy` |
+| Production Week | `ProductionWeekController`, `ProductionWeekService` | `resources/js/Pages/Master/ProductionWeek` |
+| Template Mapping SR | `SRMappingTemplateController`, `SRMappingTemplateService` | `resources/js/Pages/Master/SRMappingTemplate` |
+| User Management | `UserController` | `resources/js/Pages/Admin/Users` |
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Perintah Penting
 
-## License
+```bash
+npm run dev
+npm run build
+npm run typecheck
+composer test
+vendor/bin/pint
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Dokumentasi
+
+Lihat [docs/README.md](docs/README.md) untuk indeks dokumentasi teknis, panduan pengguna, dan laporan.
+
+## Catatan Kebersihan Workspace
+
+File `.log`, profil Chrome QA, `node_modules`, `vendor`, build frontend, dan cache lokal tidak perlu dicari lewat Git. Aturan ignore ada di `.gitignore` supaya hasil `git status` dan pencarian project tetap lebih rapi.

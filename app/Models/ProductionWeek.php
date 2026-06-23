@@ -2,11 +2,16 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
 
+use App\Traits\LogsActivity;
+
 class ProductionWeek extends Model
 {
+    use LogsActivity;
+
     protected $table = 'production_weeks';
 
     protected $fillable = [
@@ -56,7 +61,7 @@ class ProductionWeek extends Model
      * Cek apakah tanggal ETD masuk ke week ini.
      * Patokan: ETD >= week_start minggu ini DAN < week_start minggu berikutnya.
      */
-    public function containsDate($date)
+    public function containsDate(string $date): bool
     {
         $date = Carbon::parse($date)->startOfDay();
         $weekStart = $this->week_start->copy()->startOfDay();
@@ -65,8 +70,8 @@ class ProductionWeek extends Model
             ->where('week_start', '>', $this->week_start)
             ->when(
                 $this->customer_id !== null,
-                fn ($query) => $query->where('customer_id', $this->customer_id),
-                fn ($query) => $query->whereNull('customer_id')
+                fn($query) => $query->where('customer_id', $this->customer_id),
+                fn($query) => $query->whereNull('customer_id')
             )
             ->orderBy('week_start')
             ->first();
@@ -81,7 +86,7 @@ class ProductionWeek extends Model
     /**
      * Scope filter by customer
      */
-    public function scopeForCustomer($query, $customerId)
+    public function scopeForCustomer(Builder $query, int|string|null $customerId): Builder
     {
         return $customerId ? $query->where('customer_id', $customerId) : $query;
     }
@@ -89,7 +94,7 @@ class ProductionWeek extends Model
     /**
      * Scope filter by year
      */
-    public function scopeForYear($query, $year)
+    public function scopeForYear(Builder $query, int|string $year): Builder
     {
         return $query->where('year', $year);
     }
@@ -98,7 +103,7 @@ class ProductionWeek extends Model
      * Find the production week that contains the given ETD date.
      * The week is determined by the latest week_start less than or equal to the date.
      */
-    public static function findByDate($customerId, $date): ?self
+    public static function findByDate(int|string|null $customerId, string $date): ?self
     {
         if (empty($date)) {
             return null;

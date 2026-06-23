@@ -4,8 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+use App\Traits\LogsActivity;
+
 class SRMappingTemplate extends Model
 {
+    use LogsActivity;
+
     protected $table = 'sr_mapping_templates';
 
     protected $fillable = [

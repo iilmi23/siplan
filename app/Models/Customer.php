@@ -3,10 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\LogsActivity;
 
 class Customer extends Model
 {
-    //
+    use LogsActivity;
+
     protected $fillable = ['name', 'code'];
 
     public function ports()
@@ -22,6 +24,11 @@ class Customer extends Model
     public function sppRecords()
     {
         return $this->hasMany(SPP::class, 'customer_id');
+    }
+
+    public function productionWeeks()
+    {
+        return $this->hasMany(ProductionWeek::class);
     }
 
     public function srMappingTemplates()

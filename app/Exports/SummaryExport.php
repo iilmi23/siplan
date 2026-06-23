@@ -2,6 +2,7 @@
 
 namespace App\Exports;
 
+use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithColumnWidths;
@@ -14,7 +15,7 @@ use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 
 class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCustomStartCell
 {
-    protected $data;
+    protected Collection $data;
 
     // ── Fixed Left Columns ────────────────────────────────────────────────
     const COLOR_HEADER_FIXED    = 'FF1D4D2A'; // dark forest       → col A-C header rows 1-4
@@ -44,6 +45,15 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
     const COLOR_FIRM_HEADER     = 'FFFFFF00'; // yellow
     const COLOR_FORE_HEADER     = 'FFF4B183'; // orange
 
+    // ── FIRM Column Custom Colors (Yellow/Gold/Amber Theme) ────────────────
+    const COLOR_FIRM_MONTH_BG   = 'FFFFF9C4'; // soft yellow
+    const COLOR_FIRM_ETD_BG     = 'FFFFEE58'; // medium yellow
+    const COLOR_FIRM_WEEK_BG    = 'FFFBC02D'; // dark yellow
+    const COLOR_FIRM_TOT_BG     = 'FFF57F17'; // orange/amber for TOT column
+    const COLOR_FIRM_DATA_ODD   = 'FFFFFDE7'; // extremely soft yellow
+    const COLOR_FIRM_DATA_EVEN  = 'FFFFF9C4'; // soft yellow
+    const COLOR_FIRM_TEXT       = 'FF5D4037'; // brown text
+
     // ── TOT Column ────────────────────────────────────────────────────────
     const COLOR_TOT_HEADER_BG   = 'FF5A8F75'; // muted green for TOT sub-header rows 2,3
     const COLOR_TOT_WEEK_BG     = 'FF2D5A3D'; // darker forest green for TOT week row
@@ -56,12 +66,30 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
     const COLOR_TOTAL_BORDER    = 'FF2E7D52';
     const COLOR_TOTAL_TOP       = 'FF4CAF78';
 
-    /** @var array Cached periods with month totals */
-    private $_cachedPeriods = null;
+    /** @var array|null Cached periods with month totals */
+    private ?array $_cachedPeriods = null;
 
-    public function __construct($data)
+    protected mixed $runningWeek;
+    protected ?int $periodsPerMonth;
+
+    public function __construct(Collection $data, mixed $runningWeek = null, ?int $periodsPerMonth = null)
     {
         $this->data = $data;
+        $this->runningWeek = $runningWeek;
+        $this->periodsPerMonth = $periodsPerMonth;
+    }
+
+    private function isPeriodRunningWeek(array $period): bool
+    {
+        if (!$this->runningWeek || empty($period['etd_raw'])) {
+            return false;
+        }
+
+        $etd = \Carbon\Carbon::parse($period['etd_raw'])->startOfDay();
+        $start = \Carbon\Carbon::parse($this->runningWeek->week_start)->startOfDay();
+        $end = \Carbon\Carbon::parse($this->runningWeek->end_date)->startOfDay();
+
+        return $etd->gte($start) && $etd->lte($end);
     }
 
     // ── 1. Array ──────────────────────────────────────────────────────────
@@ -71,7 +99,7 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
         $rows    = [];
 
         // ── Header Row 1: Group labels (FIRM / FORECAST per month group)
-        $row1 = ['NO', 'ASSY NO', 'Order Type'];
+        $row1 = ['NO', 'ASSY NO', 'Type'];
         foreach ($periods as $period) {
             // All columns filled via merges in styles() for group headers
             $row1[] = '';
@@ -79,23 +107,23 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
         $rows[] = $row1;
 
         // ── Header Row 2: ETD / TOT
-        $row2 = ['', '', 'ETD'];
+        $row2 = ['', '', 'Month'];
         foreach ($periods as $period) {
-            $row2[] = ($period['week'] === 'TOT') ? 'TOT' : $period['etd'];
+            $row2[] = ($period['week'] === 'TOT') ? 'TOT' : $period['month_label'];
         }
         $rows[] = $row2;
 
         // ── Header Row 3: ETA
-        $row3 = ['', '', 'ETA'];
+        $row3 = ['', '', 'ETD'];
         foreach ($periods as $period) {
-            $row3[] = ($period['week'] === 'TOT') ? '' : $period['eta'];
+            $row3[] = ($period['week'] === 'TOT') ? '' : $period['etd'];
         }
         $rows[] = $row3;
 
         // ── Header Row 4: Week
-        $row4 = ['', '', 'week'];
+        $row4 = ['', '', 'Week'];
         foreach ($periods as $period) {
-            $row4[] = ($period['week'] === 'TOT') ? '' : $period['week'];
+            $row4[] = ($period['week'] === 'TOT') ? 'TOT' : $period['week'];
         }
         $rows[] = $row4;
 
@@ -111,19 +139,21 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
                 if ($period['week'] === 'TOT') {
                     // Monthly subtotal for this part
                     $monthKey = $period['month'];
+                    $typeKey  = $period['type'];
                     $total    = 0;
                     foreach ($items as $item) {
-                        $itemMonth = $item->month ?? date('Y-m', strtotime($item->eta));
-                        if ($itemMonth === $monthKey) {
+                        $itemMonth = $this->monthKey($item);
+                        $itemType  = strtoupper((string) ($item->order_type ?? 'FORECAST'));
+                        if ($itemMonth === $monthKey && $itemType === $typeKey) {
                             $total += (int)($item->qty ?? 0);
                         }
                     }
                     $dataRow[] = ($total === 0) ? '0' : $total;
                 } else {
-                    $key   = implode('|', [$period['etd_raw'], $period['eta_raw'], $period['week']]);
+                    $key   = $period['key'];
                     $total = 0;
                     foreach ($items as $item) {
-                        $itemKey = implode('|', [$item->etd, $item->eta, $this->normalizeWeek($item->week)]);
+                        $itemKey = $this->periodKey($item);
                         if ($itemKey === $key) {
                             $total += (int)($item->qty ?? 0);
                         }
@@ -140,19 +170,21 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
         foreach ($periods as $period) {
             if ($period['week'] === 'TOT') {
                 $monthKey = $period['month'];
+                $typeKey  = $period['type'];
                 $total    = 0;
                 foreach ($this->data as $item) {
-                    $itemMonth = $item->month ?? date('Y-m', strtotime($item->eta));
-                    if ($itemMonth === $monthKey) {
+                    $itemMonth = $this->monthKey($item);
+                    $itemType  = strtoupper((string) ($item->order_type ?? 'FORECAST'));
+                    if ($itemMonth === $monthKey && $itemType === $typeKey) {
                         $total += (int)($item->qty ?? 0);
                     }
                 }
                 $totalRow[] = ($total === 0) ? '0' : $total;
             } else {
-                $key   = implode('|', [$period['etd_raw'], $period['eta_raw'], $period['week']]);
+                $key   = $period['key'];
                 $total = 0;
                 foreach ($this->data as $item) {
-                    $itemKey = implode('|', [$item->etd, $item->eta, $this->normalizeWeek($item->week)]);
+                    $itemKey = $this->periodKey($item);
                     if ($itemKey === $key) {
                         $total += (int)($item->qty ?? 0);
                     }
@@ -168,12 +200,12 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
     // ── 2. Column widths ──────────────────────────────────────────────────
     public function columnWidths(): array
     {
-        $widths  = ['A' => 5, 'B' => 16, 'C' => 10];
+        $widths  = ['A' => 5, 'B' => 18, 'C' => 8];
         $periods = $this->getPeriodsWithMonthTotals();
 
         foreach ($periods as $i => $period) {
             $col           = Coordinate::stringFromColumnIndex($i + 4);
-            $widths[$col]  = ($period['week'] === 'TOT') ? 6 : 7;
+            $widths[$col]  = ($period['week'] === 'TOT') ? 7 : 11;
         }
 
         return $widths;
@@ -210,7 +242,7 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
         $sheet->mergeCells('B1:B4');
 
         // ── Build month-group metadata for merges & coloring
-        // groups: [ ['type'=>'FIRM|FORECAST', 'month'=>'2025-02', 'startCol'=>4, 'endCol'=>9, 'totCol'=>9], ... ]
+        // groups: [ ['type'=>'FIRM|FORECAST', 'month'=>'2025-02', 'startCol'=>3, 'endCol'=>8, 'totCol'=>8], ... ]
         $monthGroups = $this->buildMonthGroups($periods);
 
         // ── Row 1: Group header merges and colors
@@ -246,8 +278,8 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
         ]);
 
         // ── Set headers in column C (row 2-4) — labels that aren't set by data array
-        $sheet->getCell('C2')->setValue('ETD');
-        $sheet->getCell('C3')->setValue('ETA');
+        $sheet->getCell('C2')->setValue('Month');
+        $sheet->getCell('C3')->setValue('ETD');
         $sheet->getCell('C4')->setValue('Week');
 
         // ── Period column headers (rows 2-4)
@@ -255,35 +287,48 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
             $colIdx = 4 + $pIdx;
             $col    = Coordinate::stringFromColumnIndex($colIdx);
             $isTot  = ($period['week'] === 'TOT');
+            $isFirm = ($period['type'] === 'FIRM');
 
-            // Row 2 — ETD
+            // Row 2 — Month: value and merge are handled by the monthSpanGroups block below.
+            // We only apply base styling here as a fallback for single-column months.
+            $bgMonth    = $isTot ? self::COLOR_TOT_HEADER_BG : ($isFirm ? 'FFFFF9C4' : 'FFFCE8D5');
+            $colorMonth = $isTot ? self::COLOR_TEXT_WHITE     : ($isFirm ? 'FF5D4037' : 'FF6D3A00');
+
             $sheet->getStyle("{$col}2")->applyFromArray([
-                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $isTot ? self::COLOR_TOT_HEADER_BG : self::COLOR_HEADER_ETD]],
-                'font'      => ['bold' => true, 'color' => ['argb' => self::COLOR_TEXT_WHITE], 'name' => 'Arial', 'size' => 8],
+                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $bgMonth]],
+                'font'      => ['bold' => true, 'color' => ['argb' => $colorMonth], 'name' => 'Arial', 'size' => 8],
                 'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
                 'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => self::COLOR_BORDER_HEADER]]],
             ]);
-            if (!$isTot) {
-                $sheet->getCell("{$col}2")->setValue($period['etd']);
+
+            // Row 3 — ETD
+            $bgEtd = $isTot ? self::COLOR_TOT_HEADER_BG : self::COLOR_HEADER_ETD;
+            $colorEtd = self::COLOR_TEXT_WHITE;
+
+            if (!$isTot && $this->isPeriodRunningWeek($period)) {
+                $bgEtd = 'FFFF0000'; // Red
+                $colorEtd = 'FF000000'; // Black
             }
 
-            // Row 3 — ETA
             $sheet->getStyle("{$col}3")->applyFromArray([
-                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $isTot ? self::COLOR_TOT_HEADER_BG : self::COLOR_HEADER_ETA]],
-                'font'      => ['bold' => true, 'color' => ['argb' => self::COLOR_TEXT_WHITE], 'name' => 'Arial', 'size' => 8],
+                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $bgEtd]],
+                'font'      => ['bold' => true, 'color' => ['argb' => $colorEtd], 'name' => 'Arial', 'size' => 8],
                 'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
                 'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => self::COLOR_BORDER_HEADER]]],
             ]);
             if (!$isTot) {
-                $sheet->getCell("{$col}3")->setValue($period['eta']);
+                $sheet->getCell("{$col}3")->setValue($period['etd']);
             }
 
             // Row 4 — Week / TOT
+            $bgWeek = $isTot ? self::COLOR_TOT_WEEK_BG : self::COLOR_HEADER_WEEK;
+            $colorWeek = self::COLOR_TEXT_WHITE;
+
             $weekVal = ($period['week'] === 'TOT') ? 'TOT' : ($period['week'] ?: '');
             $sheet->getCell("{$col}4")->setValue($weekVal);
             $sheet->getStyle("{$col}4")->applyFromArray([
-                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $isTot ? self::COLOR_TOT_WEEK_BG : self::COLOR_HEADER_WEEK]],
-                'font'      => ['bold' => true, 'color' => ['argb' => self::COLOR_TEXT_WHITE], 'name' => 'Arial', 'size' => 9],
+                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $bgWeek]],
+                'font'      => ['bold' => true, 'color' => ['argb' => $colorWeek], 'name' => 'Arial', 'size' => 9],
                 'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
                 'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => self::COLOR_BORDER_HEADER]]],
             ]);
@@ -292,6 +337,66 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
             if ($isTot) {
                 $sheet->mergeCells("{$col}2:{$col}4");
             }
+        }
+
+        // ── Row 2: Merge month label across all week columns in that month group
+        // Build month-span groups (exclude TOT columns since they are already merged rows 2-4)
+        $monthSpanGroups = [];
+        $currentSpan = null;
+
+        foreach ($periods as $pIdx => $period) {
+            if ($period['week'] === 'TOT') {
+                // TOT column is already merged vertically — close current span
+                if ($currentSpan !== null) {
+                    $monthSpanGroups[] = $currentSpan;
+                    $currentSpan = null;
+                }
+                continue;
+            }
+
+            $spanKey = ($period['type'] ?? 'FORECAST') . '|' . $period['month'];
+            $colIdx  = 4 + $pIdx;
+
+            if ($currentSpan === null || $currentSpan['key'] !== $spanKey) {
+                if ($currentSpan !== null) {
+                    $monthSpanGroups[] = $currentSpan;
+                }
+                $currentSpan = [
+                    'key'        => $spanKey,
+                    'label'      => $period['month_label'] ?? '',
+                    'startCol'   => $colIdx,
+                    'endCol'     => $colIdx,
+                    'type'       => $period['type'] ?? 'FORECAST',
+                ];
+            } else {
+                $currentSpan['endCol'] = $colIdx;
+            }
+        }
+        if ($currentSpan !== null) {
+            $monthSpanGroups[] = $currentSpan;
+        }
+
+        foreach ($monthSpanGroups as $span) {
+            $startCol = Coordinate::stringFromColumnIndex($span['startCol']);
+            $endCol   = Coordinate::stringFromColumnIndex($span['endCol']);
+            $isFirm   = ($span['type'] === 'FIRM');
+
+            // Merge + style the month label across the span
+            if ($span['startCol'] < $span['endCol']) {
+                $sheet->mergeCells("{$startCol}2:{$endCol}2");
+            }
+
+            $sheet->getCell("{$startCol}2")->setValue($span['label']);
+
+            $bgColor   = $isFirm ? 'FFFFF9C4' : 'FFFCE8D5'; // soft yellow FIRM / soft orange FORECAST
+            $textColor = $isFirm ? 'FF5D4037' : 'FF6D3A00'; // brown FIRM / dark orange FORECAST
+
+            $sheet->getStyle("{$startCol}2:{$endCol}2")->applyFromArray([
+                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $bgColor]],
+                'font'      => ['bold' => true, 'color' => ['argb' => $textColor], 'name' => 'Arial', 'size' => 9],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+                'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => self::COLOR_BORDER_HEADER]]],
+            ]);
         }
 
         // ── Data rows — fixed left cols A-C
@@ -327,9 +432,15 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
 
                 if ($isTot) {
                     $bgColor = $isOdd ? self::COLOR_TOT_DATA_ODD : self::COLOR_TOT_DATA_EVEN;
+
                     $sheet->getStyle($cellCoord)->applyFromArray([
                         'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $bgColor]],
-                        'font'      => ['bold' => true, 'color' => ['argb' => self::COLOR_TOT_TEXT], 'name' => 'Arial', 'size' => 9],
+                        'font'      => [
+                            'bold' => true,
+                            'color' => ['argb' => self::COLOR_TEXT_WHITE],
+                            'name' => 'Arial',
+                            'size' => 9
+                        ],
                         'alignment' => ['horizontal' => Alignment::HORIZONTAL_RIGHT, 'vertical' => Alignment::VERTICAL_CENTER],
                         'numberFormat' => ['formatCode' => '0'],
                         'borders'   => [
@@ -340,9 +451,15 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
                     ]);
                 } else {
                     $bgColor = $isOdd ? self::COLOR_ROW_ODD : self::COLOR_ROW_EVEN;
+
                     $sheet->getStyle($cellCoord)->applyFromArray([
                         'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $bgColor]],
-                        'font'      => ['name' => 'Arial', 'size' => 9, 'bold' => false],
+                        'font'      => [
+                            'name' => 'Arial',
+                            'size' => 9,
+                            'bold' => false,
+                            'color' => ['argb' => self::COLOR_TEXT_VALUE]
+                        ],
                         'alignment' => ['horizontal' => Alignment::HORIZONTAL_RIGHT, 'vertical' => Alignment::VERTICAL_CENTER],
                         'numberFormat' => ['formatCode' => '0'],
                         'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => self::COLOR_BORDER_LIGHT]]],
@@ -352,9 +469,7 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
                 // Zero / non-zero coloring
                 $cellVal = $sheet->getCell($cellCoord)->getValue();
                 if ($isTot) {
-                    // TOT column always shows value prominently
-                    // Zero values: muted green; non-zero: dark green
-                    $fontColor = ($cellVal === 0 || $cellVal === '0') ? 'FF7AA68A' : self::COLOR_TOT_TEXT;
+                    $fontColor = ($cellVal === 0 || $cellVal === '0') ? 'FF7AA68A' : self::COLOR_TEXT_WHITE;
                     $sheet->getStyle($cellCoord)->getFont()->getColor()->setARGB($fontColor);
                     $sheet->getStyle($cellCoord)->getFont()->setBold($cellVal !== 0 && $cellVal !== '0');
                 } else {
@@ -407,19 +522,21 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
         $byTypeMonth = []; // ['FIRM' => ['2025-02' => [...periods...]], 'FORECAST' => [...]]
 
         foreach ($this->data as $item) {
-            $type  = $item->order_type ?? 'FORECAST';
-            $month = $item->month ?? date('Y-m', strtotime($item->eta));
+            $type  = strtoupper((string) ($item->order_type ?? 'FORECAST'));
+            $month = $this->monthKey($item);
             $week  = $this->normalizeWeek($item->week);
-            $key   = implode('|', [$item->etd, $item->eta, $week]);
+            $key   = $this->periodKey($item);
 
             $byTypeMonth[$type][$month][$key] = [
-                'etd'     => date('n/j', strtotime($item->etd)),
-                'eta'     => date('n/j', strtotime($item->eta)),
-                'week'    => $week,
-                'etd_raw' => $item->etd,
-                'eta_raw' => $item->eta,
-                'month'   => $month,
-                'type'    => $type,
+                'key'         => $key,
+                'etd'         => $item->etd ? date('j-M', strtotime($item->etd)) : '',
+                'eta'         => $item->eta ? date('n/j', strtotime($item->eta)) : '',
+                'week'        => $week,
+                'etd_raw'     => $item->etd,
+                'eta_raw'     => $item->eta,
+                'month'       => $month,
+                'month_label' => $this->monthLabelWithYear($month, $item->etd),
+                'type'        => $type,
             ];
         }
 
@@ -430,7 +547,47 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
 
         foreach ($sortedTypes as $type) {
             $months = $byTypeMonth[$type];
-            ksort($months); // sort months chronologically
+            uksort($months, function($a, $b) use ($months) {
+                $minA = null;
+                foreach ($months[$a] as $p) {
+                    $d = (!empty($p['etd_raw'])) ? $p['etd_raw'] : ((!empty($p['eta_raw'])) ? $p['eta_raw'] : null);
+                    if ($d) {
+                        $dVal = ($d instanceof \Carbon\Carbon || $d instanceof \DateTimeInterface) 
+                            ? $d->format('Y-m-d') 
+                            : (string) $d;
+                        if ($minA === null || $dVal < $minA) {
+                            $minA = $dVal;
+                        }
+                    }
+                }
+                $minB = null;
+                foreach ($months[$b] as $p) {
+                    $d = (!empty($p['etd_raw'])) ? $p['etd_raw'] : ((!empty($p['eta_raw'])) ? $p['eta_raw'] : null);
+                    if ($d) {
+                        $dVal = ($d instanceof \Carbon\Carbon || $d instanceof \DateTimeInterface) 
+                            ? $d->format('Y-m-d') 
+                            : (string) $d;
+                        if ($minB === null || $dVal < $minB) {
+                            $minB = $dVal;
+                        }
+                    }
+                }
+
+                if ($minA !== null && $minB !== null) {
+                    return strcmp($minA, $minB);
+                }
+
+                if ($minA !== null) return -1;
+                if ($minB !== null) return 1;
+
+                $aliases = [
+                    'JAN' => 1, 'FEB' => 2, 'MAR' => 3, 'APR' => 4, 'MAY' => 5, 'JUN' => 6,
+                    'JUL' => 7, 'AUG' => 8, 'SEP' => 9, 'OCT' => 10, 'NOV' => 11, 'DEC' => 12
+                ];
+                $aliasA = $aliases[strtoupper(substr($a, 0, 3))] ?? 99;
+                $aliasB = $aliases[strtoupper(substr($b, 0, 3))] ?? 99;
+                return $aliasA <=> $aliasB;
+            });
 
             foreach ($months as $month => $periods) {
                 // Sort weeks inside month by ETD date
@@ -446,13 +603,15 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
                 while ($weekCount < $this->periodsPerMonth()) {
                     $weekNum = $weekCount + 1;
                     $result[] = [
-                        'week'    => $weekNum,
+                        'week'    => '',
                         'month'   => $month,
                         'type'    => $type,
+                        'key'     => "pad|{$type}|{$month}|{$weekNum}",
                         'etd'     => '',
                         'eta'     => '',
                         'etd_raw' => '',
                         'eta_raw' => '',
+                        'month_label' => $this->monthLabelWithYear($month, null),
                     ];
                     $weekCount++;
                 }
@@ -462,10 +621,12 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
                     'week'    => 'TOT',
                     'month'   => $month,
                     'type'    => $type,
+                    'key'     => "tot|{$type}|{$month}",
                     'etd'     => '',
                     'eta'     => '',
                     'etd_raw' => '',
                     'eta_raw' => '',
+                    'month_label' => $this->monthLabel($month),
                 ];
             }
         }
@@ -479,7 +640,86 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
      * Returns array of groups, each group spanning one (type, month) block:
      * ['type' => 'FIRM', 'month' => '2025-02', 'startCol' => 4, 'endCol' => 9]
      */
-    private function normalizeWeek($week)
+    private function periodKey(object $item): string
+    {
+        return implode('|', [
+            strtoupper((string) ($item->order_type ?? 'FORECAST')),
+            $item->etd ?? '',
+            $this->normalizeWeek($item->week ?? ''),
+        ]);
+    }
+
+    private function monthKey(object $item): string
+    {
+        $month = trim((string) ($item->month ?? ''));
+        if (preg_match('/^(\d{4})-(\d{1,2})/', $month, $matches)) {
+            return sprintf('%04d-%02d', (int) $matches[1], (int) $matches[2]);
+        }
+
+        $alias = strtoupper(substr($month, 0, 3));
+        if ($alias !== '') {
+            return $alias; // Group by month field alias (MAR, APR, etc.) — keeps data in correct month
+        }
+
+        if (!empty($item->etd)) {
+            $timestamp = strtotime((string) $item->etd);
+            if ($timestamp !== false) {
+                return date('Y-m', $timestamp);
+            }
+        }
+
+        return 'unknown';
+    }
+
+    /**
+     * Compute month label including year suffix (e.g. 'Mar-26').
+     * Uses $etd to extract the year when $month is a 3-letter alias ('MAR').
+     * Falls back to monthLabel() when ETD is unavailable.
+     */
+    private function monthLabelWithYear(string $month, mixed $etd = null): string
+    {
+        $base = $this->monthLabel($month); // e.g. 'Mar' or 'Mar-26' (when month is 'YYYY-MM')
+
+        // Already has year (e.g. month was '2026-03' → monthLabel returns 'Mar-26')
+        if (str_contains($base, '-')) {
+            return $base;
+        }
+
+        // Alias format (e.g. 'MAR') — get year from ETD
+        if (!empty($etd)) {
+            $ts = strtotime((string) $etd);
+            if ($ts !== false) {
+                return $base . '-' . date('y', $ts);
+            }
+        }
+
+        return $base; // fallback: 'Mar' if no ETD available
+    }
+
+    private function monthLabel(string $month): string
+    {
+        $names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        $aliases = [
+            'JAN' => 0, 'FEB' => 1, 'MAR' => 2, 'APR' => 3, 'MAY' => 4, 'JUN' => 5,
+            'JUL' => 6, 'AUG' => 7, 'SEP' => 8, 'OCT' => 9, 'NOV' => 10, 'DEC' => 11,
+        ];
+
+        if (preg_match('/^(\d{4})-(\d{1,2})/', $month, $matches)) {
+            $monthIndex = max(0, min(11, (int) $matches[2] - 1));
+            return $names[$monthIndex] . '-' . substr((string) $matches[1], -2);
+        }
+
+        $alias = strtoupper(substr($month, 0, 3));
+        if (array_key_exists($alias, $aliases)) {
+            return $names[$aliases[$alias]];
+        }
+
+        return $month === 'unknown' ? '' : $month;
+    }
+
+    // Removed assySppNumber
+
+    private function normalizeWeek(mixed $week): mixed
     {
         if ($week === null || $week === '') {
             return '';
@@ -502,7 +742,7 @@ class SummaryExport implements FromArray, WithStyles, WithColumnWidths, WithCust
 
     protected function periodsPerMonth(): int
     {
-        return 5;
+        return $this->periodsPerMonth ?? 5;
     }
 
     protected function buildMonthGroups(array $periods): array

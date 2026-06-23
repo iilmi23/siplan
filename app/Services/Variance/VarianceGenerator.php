@@ -5,7 +5,8 @@ namespace App\Services\Variance;
 use App\Models\UploadBatch;
 use App\Models\Variance\SrVarianceAnalytic;
 use App\Models\Variance\SrVarianceDashboardSummary;
-use App\Services\VarianceAnalysisService;
+use App\Services\Variance\AnalyticsCacheService;
+use App\Services\Variance\VarianceAnalysisService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -112,13 +113,10 @@ class VarianceGenerator
             'customer_id' => $batch->customer_id,
             'current_batch_id' => $batch->id,
             'previous_batch_id' => $comparison['previous_batch']['id'] ?? null,
-            'customer_code' => $comparison['customer'] ?? $batch->customer?->code,
             'assy_number' => $row['assy_number'] ?? null,
             'order_type' => $row['order_type'] ?? null,
-            'month' => $row['month'] ?? null,
             'month_number' => $monthNumber,
             'year' => $year,
-            'week' => $row['week'] ?? null,
             'production_week' => is_numeric($week) ? (int) $week : null,
             'etd' => $this->dateValue($row['etd'] ?? null),
             'eta' => $this->dateValue($row['eta'] ?? null),

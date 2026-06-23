@@ -13,13 +13,10 @@ return new class extends Migration
             $table->foreignId('customer_id')->nullable()->constrained('customers')->nullOnDelete();
             $table->foreignId('current_batch_id')->constrained('upload_batches')->cascadeOnDelete();
             $table->foreignId('previous_batch_id')->nullable()->constrained('upload_batches')->nullOnDelete();
-            $table->string('customer_code')->nullable();
             $table->string('assy_number')->nullable();
             $table->string('order_type')->nullable();
-            $table->string('month')->nullable();
             $table->unsignedSmallInteger('month_number')->nullable();
             $table->unsignedSmallInteger('year')->nullable();
-            $table->string('week')->nullable();
             $table->unsignedSmallInteger('production_week')->nullable();
             $table->date('etd')->nullable();
             $table->date('eta')->nullable();
@@ -47,73 +44,14 @@ return new class extends Migration
             $table->index(['etd'], 'sr_variance_etd_index');
             $table->index(['eta'], 'sr_variance_eta_index');
             $table->index(['port'], 'sr_variance_port_index');
+            $table->index(['customer_id', 'assy_number', 'classification'], 'sr_variance_customer_assy_status_idx');
+            $table->index(['month_number', 'production_week', 'year'], 'sr_variance_period_week_year_idx');
         });
 
-        Schema::create('sr_variance_trends', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('customer_id')->nullable()->constrained('customers')->nullOnDelete();
-            $table->string('customer_code')->nullable();
-            $table->string('assy_number')->nullable();
-            $table->string('period_type')->default('month');
-            $table->string('period_key');
-            $table->unsignedSmallInteger('year')->nullable();
-            $table->unsignedSmallInteger('month_number')->nullable();
-            $table->unsignedSmallInteger('production_week')->nullable();
-            $table->integer('total_previous_qty')->default(0);
-            $table->integer('total_current_qty')->default(0);
-            $table->integer('total_variance_qty')->default(0);
-            $table->decimal('average_growth', 12, 2)->default(0);
-            $table->decimal('variance_volatility', 12, 2)->default(0);
-            $table->unsignedInteger('trend_duration')->default(0);
-            $table->string('trend_direction')->default('stable');
-            $table->timestamp('calculated_at')->nullable();
-            $table->timestamps();
-
-            $table->unique(['customer_id', 'assy_number', 'period_type', 'period_key'], 'sr_variance_trend_unique');
-            $table->index(['period_type', 'period_key', 'trend_direction'], 'sr_variance_trend_period_index');
-        });
-
-        Schema::create('sr_variance_forecasts', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('customer_id')->nullable()->constrained('customers')->nullOnDelete();
-            $table->string('customer_code')->nullable();
-            $table->string('assy_number')->nullable();
-            $table->string('forecast_type')->default('month');
-            $table->string('target_period');
-            $table->integer('moving_average_qty')->default(0);
-            $table->integer('projected_qty')->default(0);
-            $table->decimal('confidence_score', 5, 2)->default(0);
-            $table->json('source_periods')->nullable();
-            $table->timestamp('generated_at')->nullable();
-            $table->timestamps();
-
-            $table->unique(['customer_id', 'assy_number', 'forecast_type', 'target_period'], 'sr_variance_forecast_unique');
-            $table->index(['forecast_type', 'target_period'], 'sr_variance_forecast_period_index');
-        });
-
-        Schema::create('sr_variance_insights', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('customer_id')->nullable()->constrained('customers')->nullOnDelete();
-            $table->string('customer_code')->nullable();
-            $table->string('assy_number')->nullable();
-            $table->string('insight_type')->default('info');
-            $table->string('severity')->default('normal');
-            $table->string('title');
-            $table->text('message');
-            $table->json('payload')->nullable();
-            $table->timestamp('generated_at')->nullable();
-            $table->timestamps();
-
-            $table->index(['severity', 'insight_type'], 'sr_variance_insight_severity_index');
-            $table->index(['customer_id', 'assy_number'], 'sr_variance_insight_entity_index');
-        });
     }
-
-    public function down(): void
-    {
-        Schema::dropIfExists('sr_variance_insights');
-        Schema::dropIfExists('sr_variance_forecasts');
-        Schema::dropIfExists('sr_variance_trends');
-        Schema::dropIfExists('sr_variance_analytics');
-    }
-};
+ 
+     public function down(): void
+     {
+         Schema::dropIfExists('sr_variance_analytics');
+     }
+ };

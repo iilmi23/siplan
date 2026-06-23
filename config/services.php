@@ -36,9 +36,12 @@ return [
     ],
 
     'sirep' => [
-        'assy_endpoint' => env('SIREP_ASSY_ENDPOINT', 'http://10.251.45.134:8001/api/shared/assy'),
-        'carline_endpoint' => env('SIREP_CARLINE_ENDPOINT', 'http://10.251.45.134:8001/api/shared/carline'),
-        'conveyor_endpoint' => env('SIREP_CONVEYOR_ENDPOINT', 'http://10.251.45.134:8001/api/shared/conveyor'),
+        'base_url' => env('SIREP_BASE_URL', 'http://192.168.50.200:8001/api/shared'),
+        'endpoints' => [
+            'assy' => env('SIREP_ASSY_PATH', 'assy'),
+            'carline' => env('SIREP_CARLINE_PATH', 'carline'),
+            // 'conveyor' => env('SIREP_CONVEYOR_PATH', 'conveyor'),
+        ],
         'timeout' => env('SIREP_TIMEOUT', 30),
     ],
 

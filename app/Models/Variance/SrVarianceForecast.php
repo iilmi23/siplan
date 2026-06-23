@@ -21,8 +21,11 @@ class SrVarianceForecast extends Model
     ];
 
     protected $casts = [
-        'source_periods' => 'array',
+        'customer_id' => 'integer',
+        'moving_average_qty' => 'integer',
+        'projected_qty' => 'integer',
         'confidence_score' => 'decimal:2',
+        'source_periods' => 'array',
         'generated_at' => 'datetime',
     ];
 

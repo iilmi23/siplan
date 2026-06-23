@@ -2,6 +2,7 @@
 
 namespace App\Exports;
 
+use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithColumnWidths;
@@ -18,7 +19,7 @@ use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
  */
 class YNAExport implements FromArray, WithStyles, WithColumnWidths, WithCustomStartCell
 {
-    protected $data;
+    protected Collection $data;
 
     // ── Color Palette — "Forest Green" ───────────────────────────────────
     const COLOR_HEADER_FIXED    = 'FF1D4D2A'; // dark forest
@@ -41,9 +42,27 @@ class YNAExport implements FromArray, WithStyles, WithColumnWidths, WithCustomSt
     const COLOR_TOTAL_BORDER    = 'FF2E7D52';
     const COLOR_TOTAL_TOP       = 'FF4CAF78';
 
-    public function __construct($data)
+    protected mixed $runningWeek;
+    protected ?int $periodsPerMonth;
+
+    public function __construct(Collection $data, mixed $runningWeek = null, ?int $periodsPerMonth = null)
     {
         $this->data = $data;
+        $this->runningWeek = $runningWeek;
+        $this->periodsPerMonth = $periodsPerMonth;
+    }
+
+    private function isPeriodRunningWeek(array $period): bool
+    {
+        if (!$this->runningWeek || empty($period['etd_raw'])) {
+            return false;
+        }
+
+        $etd = \Carbon\Carbon::parse($period['etd_raw'])->startOfDay();
+        $start = \Carbon\Carbon::parse($this->runningWeek->week_start)->startOfDay();
+        $end = \Carbon\Carbon::parse($this->runningWeek->end_date)->startOfDay();
+
+        return $etd->gte($start) && $etd->lte($end);
     }
 
     // ── 1. Array ──────────────────────────────────────────────────────────
@@ -187,14 +206,25 @@ class YNAExport implements FromArray, WithStyles, WithColumnWidths, WithCustomSt
         // HEADER — fixed cols (A-C)
         // ════════════════════════════════════════════════════════════════
         $sheet->getStyle("A1:C3")->applyFromArray([
-            'fill'      => ['fillType' => Fill::FILL_SOLID,
-                            'startColor' => ['argb' => self::COLOR_HEADER_FIXED]],
-            'font'      => ['bold' => true, 'color' => ['argb' => self::COLOR_TEXT_WHITE],
-                            'name' => 'Arial', 'size' => 9],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER,
-                            'vertical'   => Alignment::VERTICAL_CENTER, 'wrapText' => false],
-            'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN,
-                                             'color'       => ['argb' => self::COLOR_BORDER_HEADER]]],
+            'fill'      => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['argb' => self::COLOR_HEADER_FIXED]
+            ],
+            'font'      => [
+                'bold' => true,
+                'color' => ['argb' => self::COLOR_TEXT_WHITE],
+                'name' => 'Arial',
+                'size' => 9
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_CENTER,
+                'vertical'   => Alignment::VERTICAL_CENTER,
+                'wrapText' => false
+            ],
+            'borders'   => ['allBorders' => [
+                'borderStyle' => Border::BORDER_THIN,
+                'color'       => ['argb' => self::COLOR_BORDER_HEADER]
+            ]],
         ]);
 
         // ════════════════════════════════════════════════════════════════
@@ -204,66 +234,112 @@ class YNAExport implements FromArray, WithStyles, WithColumnWidths, WithCustomSt
         $endPeriodCol   = $lastCol;
 
         // ETD row (row 1)
-        $sheet->getStyle("{$startPeriodCol}1:{$endPeriodCol}1")->applyFromArray([
-            'fill'      => ['fillType' => Fill::FILL_SOLID,
-                            'startColor' => ['argb' => self::COLOR_HEADER_ETD]],
-            'font'      => ['bold' => true, 'color' => ['argb' => self::COLOR_TEXT_WHITE],
-                            'name' => 'Arial', 'size' => 9],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER,
-                            'vertical'   => Alignment::VERTICAL_CENTER],
-            'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN,
-                                             'color'       => ['argb' => self::COLOR_BORDER_HEADER]]],
-        ]);
+        foreach ($periods as $pIdx => $p) {
+            $colIdx = 4 + $pIdx;
+            $col = Coordinate::stringFromColumnIndex($colIdx);
+            $isTot = ($p['week'] === 'TOT');
+
+            $bg = self::COLOR_HEADER_ETD;
+            $color = self::COLOR_TEXT_WHITE;
+
+            if (!$isTot && $this->isPeriodRunningWeek($p)) {
+                $bg = 'FFFF0000'; // Red
+                $color = 'FF000000'; // Black
+            }
+
+            $sheet->getStyle("{$col}1")->applyFromArray([
+                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $bg]],
+                'font'      => ['bold' => true, 'color' => ['argb' => $color], 'name' => 'Arial', 'size' => 9],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+                'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => self::COLOR_BORDER_HEADER]]],
+            ]);
+        }
 
         // ETA row (row 2)
         $sheet->getStyle("{$startPeriodCol}2:{$endPeriodCol}2")->applyFromArray([
-            'fill'      => ['fillType' => Fill::FILL_SOLID,
-                            'startColor' => ['argb' => self::COLOR_HEADER_ETA]],
-            'font'      => ['bold' => true, 'color' => ['argb' => self::COLOR_TEXT_WHITE],
-                            'name' => 'Arial', 'size' => 9],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER,
-                            'vertical'   => Alignment::VERTICAL_CENTER],
-            'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN,
-                                             'color'       => ['argb' => self::COLOR_BORDER_HEADER]]],
+            'fill'      => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['argb' => self::COLOR_HEADER_ETA]
+            ],
+            'font'      => [
+                'bold' => true,
+                'color' => ['argb' => self::COLOR_TEXT_WHITE],
+                'name' => 'Arial',
+                'size' => 9
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_CENTER,
+                'vertical'   => Alignment::VERTICAL_CENTER
+            ],
+            'borders'   => ['allBorders' => [
+                'borderStyle' => Border::BORDER_THIN,
+                'color'       => ['argb' => self::COLOR_BORDER_HEADER]
+            ]],
         ]);
 
         // WEEK row (row 3)
         $sheet->getStyle("{$startPeriodCol}3:{$endPeriodCol}3")->applyFromArray([
-            'fill'      => ['fillType' => Fill::FILL_SOLID,
-                            'startColor' => ['argb' => self::COLOR_HEADER_WEEK]],
-            'font'      => ['bold' => true, 'color' => ['argb' => self::COLOR_TEXT_WHITE],
-                            'name' => 'Arial', 'size' => 9],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER,
-                            'vertical'   => Alignment::VERTICAL_CENTER],
-            'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN,
-                                             'color'       => ['argb' => self::COLOR_BORDER_HEADER]]],
+            'fill'      => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['argb' => self::COLOR_HEADER_WEEK]
+            ],
+            'font'      => [
+                'bold' => true,
+                'color' => ['argb' => self::COLOR_TEXT_WHITE],
+                'name' => 'Arial',
+                'size' => 9
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_CENTER,
+                'vertical'   => Alignment::VERTICAL_CENTER
+            ],
+            'borders'   => ['allBorders' => [
+                'borderStyle' => Border::BORDER_THIN,
+                'color'       => ['argb' => self::COLOR_BORDER_HEADER]
+            ]],
         ]);
 
         // ════════════════════════════════════════════════════════════════
         // DATA ROWS — left fixed cols (A-C)
         // ════════════════════════════════════════════════════════════════
         $sheet->getStyle("A{$dataFirstRow}:C{$dataLastRow}")->applyFromArray([
-            'fill'      => ['fillType' => Fill::FILL_SOLID,
-                            'startColor' => ['argb' => self::COLOR_LEFT_BG]],
-            'font'      => ['bold' => true, 'color' => ['argb' => self::COLOR_TEXT_WHITE],
-                            'name' => 'Arial', 'size' => 9],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER,
-                            'vertical'   => Alignment::VERTICAL_CENTER],
-            'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN,
-                                             'color'       => ['argb' => 'FF334155']]],
+            'fill'      => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['argb' => self::COLOR_LEFT_BG]
+            ],
+            'font'      => [
+                'bold' => true,
+                'color' => ['argb' => self::COLOR_TEXT_WHITE],
+                'name' => 'Arial',
+                'size' => 9
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_CENTER,
+                'vertical'   => Alignment::VERTICAL_CENTER
+            ],
+            'borders'   => ['allBorders' => [
+                'borderStyle' => Border::BORDER_THIN,
+                'color'       => ['argb' => 'FF334155']
+            ]],
         ]);
 
         // Col B (ASSY NO) — left-align with indent
         $sheet->getStyle("B{$dataFirstRow}:B{$dataLastRow}")->getAlignment()
-              ->setHorizontal(Alignment::HORIZONTAL_LEFT);
+            ->setHorizontal(Alignment::HORIZONTAL_LEFT);
         $sheet->getStyle("B{$dataFirstRow}:B{$dataLastRow}")->getAlignment()->setIndent(1);
 
         // Col C (QTY label)
         $sheet->getStyle("C{$dataFirstRow}:C{$dataLastRow}")->applyFromArray([
-            'fill' => ['fillType'   => Fill::FILL_SOLID,
-                       'startColor' => ['argb' => self::COLOR_LEFT_QTY_BG]],
-            'font' => ['bold'  => false, 'color' => ['argb' => self::COLOR_TEXT_QTY_LABEL],
-                       'name'  => 'Arial', 'size' => 8],
+            'fill' => [
+                'fillType'   => Fill::FILL_SOLID,
+                'startColor' => ['argb' => self::COLOR_LEFT_QTY_BG]
+            ],
+            'font' => [
+                'bold'  => false,
+                'color' => ['argb' => self::COLOR_TEXT_QTY_LABEL],
+                'name'  => 'Arial',
+                'size' => 8
+            ],
         ]);
 
         // ════════════════════════════════════════════════════════════════
@@ -305,10 +381,10 @@ class YNAExport implements FromArray, WithStyles, WithColumnWidths, WithCustomSt
                 $cellVal   = $sheet->getCell($cellCoord)->getValue();
                 if ($cellVal === 0 || $cellVal === '0') {
                     $sheet->getStyle($cellCoord)->getFont()
-                          ->getColor()->setARGB(self::COLOR_TEXT_MUTED);
+                        ->getColor()->setARGB(self::COLOR_TEXT_MUTED);
                 } else {
                     $sheet->getStyle($cellCoord)->getFont()
-                          ->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color(self::COLOR_TEXT_VALUE));
+                        ->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color(self::COLOR_TEXT_VALUE));
                     $sheet->getStyle($cellCoord)->getFont()->setBold(true);
                 }
             }
@@ -318,32 +394,48 @@ class YNAExport implements FromArray, WithStyles, WithColumnWidths, WithCustomSt
         // TOTAL ROW
         // ════════════════════════════════════════════════════════════════
         $sheet->getStyle("A{$totalRows}:{$lastCol}{$totalRows}")->applyFromArray([
-            'fill'      => ['fillType'   => Fill::FILL_SOLID,
-                            'startColor' => ['argb' => self::COLOR_TOTAL_BG]],
-            'font'      => ['bold' => true, 'color' => ['argb' => self::COLOR_TEXT_WHITE],
-                            'name' => 'Arial', 'size' => 9],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_RIGHT,
-                            'vertical'   => Alignment::VERTICAL_CENTER],
+            'fill'      => [
+                'fillType'   => Fill::FILL_SOLID,
+                'startColor' => ['argb' => self::COLOR_TOTAL_BG]
+            ],
+            'font'      => [
+                'bold' => true,
+                'color' => ['argb' => self::COLOR_TEXT_WHITE],
+                'name' => 'Arial',
+                'size' => 9
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_RIGHT,
+                'vertical'   => Alignment::VERTICAL_CENTER
+            ],
             'numberFormat' => ['formatCode' => '0'],
             'borders'   => [
-                'top'        => ['borderStyle' => Border::BORDER_MEDIUM,
-                                 'color'       => ['argb' => self::COLOR_TOTAL_TOP]],
-                'bottom'     => ['borderStyle' => Border::BORDER_MEDIUM,
-                                 'color'       => ['argb' => self::COLOR_TOTAL_BG]],
-                'allBorders' => ['borderStyle' => Border::BORDER_THIN,
-                                 'color'       => ['argb' => self::COLOR_TOTAL_BORDER]],
+                'top'        => [
+                    'borderStyle' => Border::BORDER_MEDIUM,
+                    'color'       => ['argb' => self::COLOR_TOTAL_TOP]
+                ],
+                'bottom'     => [
+                    'borderStyle' => Border::BORDER_MEDIUM,
+                    'color'       => ['argb' => self::COLOR_TOTAL_BG]
+                ],
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color'       => ['argb' => self::COLOR_TOTAL_BORDER]
+                ],
             ],
         ]);
 
         // "TOTAL" label — left-align
         $sheet->getStyle("B{$totalRows}")->getAlignment()
-              ->setHorizontal(Alignment::HORIZONTAL_LEFT);
+            ->setHorizontal(Alignment::HORIZONTAL_LEFT);
         $sheet->getStyle("B{$totalRows}")->getAlignment()->setIndent(1);
 
         // Outer border
         $sheet->getStyle("A1:{$lastCol}{$totalRows}")->applyFromArray([
-            'borders' => ['outline' => ['borderStyle' => Border::BORDER_MEDIUM,
-                                        'color'       => ['argb' => 'FF1E2A3A']]],
+            'borders' => ['outline' => [
+                'borderStyle' => Border::BORDER_MEDIUM,
+                'color'       => ['argb' => 'FF1E2A3A']
+            ]],
         ]);
 
         return [];
@@ -379,7 +471,57 @@ class YNAExport implements FromArray, WithStyles, WithColumnWidths, WithCustomSt
         $result = [];
 
         // Iterate through months in order
-        ksort($byMonth);
+        uksort($byMonth, function ($a, $b) use ($byMonth) {
+            $minA = null;
+            foreach ($byMonth[$a] as $p) {
+                $d = (!empty($p['etd_raw'])) ? $p['etd_raw'] : ((!empty($p['eta_raw'])) ? $p['eta_raw'] : null);
+                if ($d) {
+                    $dVal = ($d instanceof \Carbon\Carbon || $d instanceof \DateTimeInterface)
+                        ? $d->format('Y-m-d')
+                        : (string) $d;
+                    if ($minA === null || $dVal < $minA) {
+                        $minA = $dVal;
+                    }
+                }
+            }
+            $minB = null;
+            foreach ($byMonth[$b] as $p) {
+                $d = (!empty($p['etd_raw'])) ? $p['etd_raw'] : ((!empty($p['eta_raw'])) ? $p['eta_raw'] : null);
+                if ($d) {
+                    $dVal = ($d instanceof \Carbon\Carbon || $d instanceof \DateTimeInterface)
+                        ? $d->format('Y-m-d')
+                        : (string) $d;
+                    if ($minB === null || $dVal < $minB) {
+                        $minB = $dVal;
+                    }
+                }
+            }
+
+            if ($minA !== null && $minB !== null) {
+                return strcmp($minA, $minB);
+            }
+
+            if ($minA !== null) return -1;
+            if ($minB !== null) return 1;
+
+            $aliases = [
+                'JAN' => 1,
+                'FEB' => 2,
+                'MAR' => 3,
+                'APR' => 4,
+                'MAY' => 5,
+                'JUN' => 6,
+                'JUL' => 7,
+                'AUG' => 8,
+                'SEP' => 9,
+                'OCT' => 10,
+                'NOV' => 11,
+                'DEC' => 12
+            ];
+            $aliasA = $aliases[strtoupper(substr($a, 0, 3))] ?? 99;
+            $aliasB = $aliases[strtoupper(substr($b, 0, 3))] ?? 99;
+            return $aliasA <=> $aliasB;
+        });
         foreach (array_keys($byMonth) as $month) {
             $periodsInMonth = $byMonth[$month];
             $sorted = collect($periodsInMonth)->sortBy(function ($p) {
@@ -391,11 +533,11 @@ class YNAExport implements FromArray, WithStyles, WithColumnWidths, WithCustomSt
                 $result[] = $period;
             }
 
-            // Pad to 5 weeks if needed
+            // Pad to weeks if needed
             $weekCount = count($sorted);
-            for ($w = $weekCount; $w < 5; $w++) {
+            for ($w = $weekCount; $w < $this->periodsPerMonth(); $w++) {
                 $result[] = [
-                    'key'      => "pad|{$month}|".($w + 1),
+                    'key'      => "pad|{$month}|" . ($w + 1),
                     'month'    => $month,
                     'week'     => $w + 1,
                     'etd'      => '',
@@ -420,7 +562,7 @@ class YNAExport implements FromArray, WithStyles, WithColumnWidths, WithCustomSt
         return $result;
     }
 
-    private function monthKey($item): string
+    private function monthKey(object $item): string
     {
         $date = $item->etd ?: ($item->eta ?: null);
 
@@ -431,12 +573,12 @@ class YNAExport implements FromArray, WithStyles, WithColumnWidths, WithCustomSt
         return (string) ($item->month ?: 'unknown');
     }
 
-    private function periodKey($item): string
+    private function periodKey(object $item): string
     {
         return (string) ($item->etd ?: '');
     }
 
-    protected function normalizeWeek($week): string
+    protected function normalizeWeek(mixed $week): string
     {
         if ($week === null || $week === '' || $week === 'TOT') {
             return (string)$week;
@@ -445,7 +587,7 @@ class YNAExport implements FromArray, WithStyles, WithColumnWidths, WithCustomSt
         return (string)$match;
     }
 
-    private function dateLabel($date): string
+    private function dateLabel(mixed $date): string
     {
         if (empty($date)) {
             return '';
@@ -455,7 +597,7 @@ class YNAExport implements FromArray, WithStyles, WithColumnWidths, WithCustomSt
         return $timestamp ? date('n/j', $timestamp) : '';
     }
 
-    private function shouldDisplayEta($item): bool
+    private function shouldDisplayEta(object $item): bool
     {
         if (empty($item->eta)) {
             return false;
@@ -468,5 +610,10 @@ class YNAExport implements FromArray, WithStyles, WithColumnWidths, WithCustomSt
         }
 
         return !is_array($extra) || (($extra['eta_fallback'] ?? false) !== true);
+    }
+
+    protected function periodsPerMonth(): int
+    {
+        return $this->periodsPerMonth ?? 5;
     }
 }

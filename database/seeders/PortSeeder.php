@@ -19,62 +19,31 @@ class PortSeeder extends Seeder
         $yc = Customer::where('code', 'YC')->first();
 
         // Seeder port untuk YNA
-        Port::updateOrCreate(
-            [
-                'name' => 'MEMPHIS',
-                'customer_id' => $yna->id,
-            ]
-        );
+        if ($yna) {
+            Port::updateOrCreate(
+                ['name' => 'MEMPHIS', 'customer_id' => $yna->id]
+            );
 
-        Port::updateOrCreate(
-            [
-                'name' => 'KITCHENER',
-                'customer_id' => $yna->id,
-            ]
-        );
+            Port::updateOrCreate(
+                ['name' => 'KITCHENER', 'customer_id' => $yna->id]
+            );
+        }
 
         // Seeder port untuk TYC
-        Port::updateOrCreate(
-            [
-                'name' => 'KAO',
-                'customer_id' => $tyc->id,
-            ]
-        );
+        if ($tyc) {
+            Port::updateOrCreate(
+                ['name' => 'KAO', 'customer_id' => $tyc->id]
+            );
+        }
 
         // Seeder port untuk YC
-        Port::updateOrCreate(
-            [
-                'name' => 'HAKATA BA',
-                'customer_id' => $yc->id,
-            ]
-        );
-
-        Port::updateOrCreate(
-            [
-                'name' => 'MOJI',
-                'customer_id' => $yc->id,
-            ]
-        );
-
-        Port::updateOrCreate(
-            [
-                'name' => 'HIROSHIMA',
-                'customer_id' => $yc->id,
-            ]
-        );
-
-        Port::updateOrCreate(
-            [
-                'name' => 'SENDAI',
-                'customer_id' => $yc->id,
-            ]
-        );
-
-        Port::updateOrCreate(
-            [
-                'name' => 'NAGOYA',
-                'customer_id' => $yc->id,
-            ]
-        );
+        if ($yc) {
+            $ycPorts = ['HAKATA', 'MOJI', 'HIROSHIMA', 'SENDAI', 'NAGOYA'];
+            foreach ($ycPorts as $portName) {
+                Port::updateOrCreate(
+                    ['name' => $portName, 'customer_id' => $yc->id]
+                );
+            }
+        }
     }
 }

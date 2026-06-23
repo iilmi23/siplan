@@ -1,0 +1,24 @@
+{
+    "compilerOptions": {
+        "allowJs": true,
+        "checkJs": false,
+        "jsx": "react-jsx",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "resolveJsonModule": true,
+        "target": "ES2020",
+        "useDefineForClassFields": true,
+        "lib": ["DOM", "DOM.Iterable", "ES2020"],
+        "types": ["vite/client"],
+        "strict": false,
+        "noEmit": true,
+        "isolatedModules": true,
+        "skipLibCheck": true,
+        "paths": {
+            "@/*": ["./resources/js/*"],
+            "ziggy-js": ["./vendor/tightenco/ziggy"]
+        }
+    },
+    "include": ["resources/js/**/*.js", "resources/js/**/*.ts", "resources/js/**/*.tsx"],
+    "exclude": ["node_modules", "public"]
+}

@@ -10,11 +10,12 @@ return new class extends Migration
     {
         Schema::create('ports', function (Blueprint $table) {
             $table->id();
-            $table->string('name')->unique();
+            $table->string('name');
             $table->foreignId('customer_id')->nullable()->constrained('customers')->onDelete('set null');
             $table->boolean('is_active')->default(true);
             $table->timestamps();
             
+            $table->unique(['customer_id', 'name'], 'ports_customer_name_unique');
             $table->index('name');
             $table->index('customer_id');
         });

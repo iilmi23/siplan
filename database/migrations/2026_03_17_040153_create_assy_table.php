@@ -10,18 +10,22 @@ return new class extends Migration
     {
         Schema::create('assy', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('carline_id')->constrained('carline')->onDelete('restrict');
+            $table->foreignId('carline_id')
+                ->constrained('carline')
+                ->onDelete('restrict');
+            $table->string('assy_code', 20)->unique();
             $table->string('assy_number', 50)->unique();
-            $table->string('assy_code', 20);
             $table->string('level', 20);
-            $table->string('type', 10)->nullable();
+            $table->string('pattern')->nullable();
+            $table->integer('standard_sea_quantity')->nullable();
+            $table->integer('standard_air_quantity')->nullable();
+            $table->integer('max_quantity_sea')->nullable();
+            $table->integer('max_quantity_air')->nullable();
             $table->decimal('umh', 10, 6);
-            $table->integer('std_pack')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
             
-            $table->index('assy_number');
-            $table->index('assy_code');
+            $table->index(['carline_id', 'is_active']);
         });
     }
 

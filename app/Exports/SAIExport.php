@@ -10,6 +10,6 @@ class SAIExport extends YCExport
 {
     protected function periodsPerMonth(): int
     {
-        return 15;
+        return $this->periodsPerMonth ?? 15;
     }
 }

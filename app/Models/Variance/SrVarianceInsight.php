@@ -20,6 +20,7 @@ class SrVarianceInsight extends Model
     ];
 
     protected $casts = [
+        'customer_id' => 'integer',
         'payload' => 'array',
         'generated_at' => 'datetime',
     ];

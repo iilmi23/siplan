@@ -1,19 +1,21 @@
 <?php
 
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\CustomerController;
-use App\Http\Controllers\SRMappingTemplateController;
-use App\Http\Controllers\SummaryController;
-use App\Http\Controllers\SPPController;
-use App\Http\Controllers\PortController;
-use App\Http\Controllers\SRController;
-use App\Http\Controllers\CarlineController;
-use App\Http\Controllers\AssyController;
-use App\Http\Controllers\TimeChartController;
-use App\Http\Controllers\ProductionWeekController;
-use App\Http\Controllers\EtdMappingController;
-use App\Http\Controllers\VarianceController;
-use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Admin\ProfileController;
+use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Master\CustomerController;
+use App\Http\Controllers\Master\SRMappingTemplateController;
+use App\Http\Controllers\Master\PortController;
+use App\Http\Controllers\Master\CarlineController;
+use App\Http\Controllers\Master\AssyController;
+use App\Http\Controllers\Master\ProductionWeekController;
+use App\Http\Controllers\Master\EtdMappingController;
+use App\Http\Controllers\Summary\SummaryController;
+use App\Http\Controllers\Summary\VarianceController;
+use App\Http\Controllers\Summary\UnmappedAssyController;
+use App\Http\Controllers\SPP\SPPController;
+use App\Http\Controllers\History\HistoryController;
+use App\Http\Controllers\SR\SRController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -67,27 +69,33 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/sr/upload', [SRController::class, 'uploadPage'])->name('sr.upload.page');
         Route::post('/preview', [SRController::class, 'preview'])->name('sr.preview');
         Route::post('/sr/upload', [SRController::class, 'uploadTaiwan'])->name('sr.upload');
+        Route::get('/unmapped-assy', [UnmappedAssyController::class, 'index'])->name('unmapped-assy.index');
+        Route::post('/unmapped-assy/remap', [UnmappedAssyController::class, 'remap'])->name('unmapped-assy.remap');
 
         Route::get('/summary', [SummaryController::class, 'index'])->name('summary.index');
         Route::get('/summary/export', [SummaryController::class, 'exportAll'])->name('summary.exportAll');
         Route::get('/summary/{id}', [SummaryController::class, 'show'])->name('summary.show');
         Route::get('/summary/{id}/data', [SummaryController::class, 'data'])->name('summary.data');
         Route::get('/summary/{id}/export', [SummaryController::class, 'export'])->name('summary.export');
+        Route::patch('/summary-rows/{summary}', [SummaryController::class, 'updateRow'])->name('summary.rows.update');
+        Route::patch('/summary-periods', [SummaryController::class, 'updatePeriod'])->name('summary.periods.update');
         Route::delete('/summary/{id}', [SummaryController::class, 'destroy'])->name('summary.destroy');
 
         Route::get('/variance', [VarianceController::class, 'index'])->name('variance.index');
         Route::get('/variance/export', [VarianceController::class, 'export'])->name('variance.export');
 
         Route::get('/spp', [SPPController::class, 'index'])->name('spp');
-        Route::get('/spp/preview', [SPPController::class, 'previewCombined'])->name('spp.previewCombined');
-        Route::post('/spp/preview', [SPPController::class, 'storeCombined'])->name('spp.storeCombined');
         Route::get('/spp/preview/{id}', [SPPController::class, 'preview'])->name('spp.preview');
         Route::post('/spp/preview/{id}', [SPPController::class, 'store'])->name('spp.store');
+        Route::get('/spp/export-draft/{id}', [SPPController::class, 'exportDraftDirect'])->name('spp.exportDraftDirect');
+        Route::post('/spp/store-direct/{id}', [SPPController::class, 'storeDirect'])->name('spp.storeDirect');
+        Route::post('/spp/export-draft', [SPPController::class, 'exportDraft'])->name('spp.exportDraft');
+        Route::post('/spp/import-draft', [SPPController::class, 'importDraft'])->name('spp.importDraft');
         Route::get('/spp/{period}', [SPPController::class, 'show'])->name('spp.show');
+        Route::get('/spp/{period}/export', [SPPController::class, 'export'])->name('spp.export');
+        Route::delete('/spp/{id}', [SPPController::class, 'destroy'])->name('spp.destroy');
 
-        Route::get('/history', function () {
-            return Inertia::render('Admin/History');
-        })->name('history');
+        Route::get('/history', [HistoryController::class, 'index'])->name('history');
     });
 
     // ===================== MASTER & OPERATIONAL PAGES =====================
@@ -112,12 +120,10 @@ Route::middleware(['auth'])->group(function () {
         // Route untuk carline management
         Route::prefix('carline')->group(function () {
             Route::get('/', [CarlineController::class, 'index'])->name('carline.index');
-            Route::get('/create', [CarlineController::class, 'create'])->name('carline.create');
             Route::post('/', [CarlineController::class, 'store'])->name('carline.store');
-            Route::get('/{carline}/edit', [CarlineController::class, 'edit'])->name('carline.edit');
             Route::put('/{carline}', [CarlineController::class, 'update'])->name('carline.update');
             Route::delete('/{carline}', [CarlineController::class, 'destroy'])->name('carline.destroy');
-            Route::get('/import', [CarlineController::class, 'importPage'])->name('carline.importPage');
+            Route::get('/download-template', [CarlineController::class, 'downloadTemplate'])->name('carline.download-template');
 
             // Routes untuk import Excel
             Route::post('/get-sheets', [CarlineController::class, 'getSheets'])->name('carline.getSheets');
@@ -135,14 +141,12 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/assy/preview-sheet', [AssyController::class, 'previewSheet'])->name('assy.previewSheet');
         Route::post('/assy/import-data', [AssyController::class, 'import'])->name('assy.import');
         Route::post('/assy/sync-sirep', [AssyController::class, 'syncSirep'])->name('assy.sync-sirep');
+        Route::post('/assy/quick-store', [AssyController::class, 'quickStore'])->name('assy.quick-store');
+        Route::post('/assy/bulk-store', [AssyController::class, 'bulkStore'])->name('assy.bulk-store');
         Route::patch('/assy/{assy}/toggle-status', [AssyController::class, 'toggleStatus'])->name('assy.toggle-status');
         
         // Resource route AFTER specific routes to prevent conflicts
         Route::resource('assy', AssyController::class);
-
-        Route::get('/timechart', [TimeChartController::class, 'index'])->name('timechart.index');
-        Route::post('/timechart/preview', [TimeChartController::class, 'preview'])->name('timechart.preview');
-        Route::post('/timechart/upload', [TimeChartController::class, 'upload'])->name('timechart.upload');
 
         // Admin only: system settings and user management
         Route::middleware(['role:admin'])->group(function () {
@@ -151,7 +155,10 @@ Route::middleware(['auth'])->group(function () {
             })->name('settings');
 
             // ===================== USER MANAGEMENT =====================
-            Route::resource('users', \App\Http\Controllers\UserController::class);
+            Route::resource('users', UserController::class)->except(['edit', 'show']);
+            Route::get('users/{user}', function () {
+                return redirect()->route('users.index');
+            })->name('users.show');
 
             Route::get('/debug/sr-latest', function () {
                 $latestUploads = \App\Models\SR::orderBy('created_at', 'desc')
@@ -177,7 +184,6 @@ Route::middleware(['auth'])->group(function () {
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
 // Auth bawaan Breeze
