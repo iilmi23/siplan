@@ -364,6 +364,19 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
             try {
                 if (typeof window.route === 'function') {
                     routeUrl = window.route(routeName).split('?')[0];
+                    const getBasePath = (): string => {
+                        if (typeof window !== 'undefined') {
+                            const pathname = window.location.pathname;
+                            if (pathname.toLowerCase().startsWith('/siplan/public')) {
+                                return pathname.substring(0, 14);
+                            }
+                        }
+                        return '';
+                    };
+                    const base = getBasePath();
+                    if (base && routeUrl.startsWith(base)) {
+                        routeUrl = routeUrl.substring(base.length);
+                    }
                 } else {
                     return false;
                 }

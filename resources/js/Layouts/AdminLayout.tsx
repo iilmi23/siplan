@@ -3,6 +3,7 @@ import { Head, usePage } from '@inertiajs/react';
 import Sidebar from '@/Components/Admin/Sidebar';
 import Topbar from '@/Components/Admin/Topbar';
 import type { SharedPageProps } from '@/types/global';
+import { asset } from '@/utils';
 
 const SIDEBAR_EXPANDED_W = 240;
 const SIDEBAR_COLLAPSED_W = 68;
@@ -81,8 +82,8 @@ export default function AdminLayout({ title, children }: AdminLayoutProps) {
         <>
             <Head>
                 <title>{headTitle}</title>
-                <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-                <link rel="alternate icon" href="/favicon.ico" />
+                <link rel="icon" type="image/svg+xml" href={asset('favicon.svg')} />
+                <link rel="alternate icon" href={asset('favicon.ico')} />
                 <meta name="csrf-token" content={props.csrf_token ?? ''} />
             </Head>
 

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MoonIcon, SunIcon, UserCircleIcon } from '@heroicons/react/24/outline';
 import { useTheme } from '@/contexts/ThemeContext';
 import type { SharedPageProps } from '@/types/global';
+import { asset } from '@/utils';
 
 const SIDEBAR_EXPANDED_W = 240;
 const SIDEBAR_COLLAPSED_W = 68;
@@ -45,7 +46,7 @@ export default function Topbar({ sidebarOpen, setSidebarOpen }: TopbarProps) {
                 style={headerStyle}
             >
                 <Link href={route('dashboard')} className="absolute left-0 top-0 flex h-16 w-[190px] items-center px-6">
-                    <img src="/images/jai.jpg" alt="SIPLAN" className="h-11 w-auto shrink-0 object-contain" />
+                    <img src={asset('images/jai.jpg')} alt="SIPLAN" className="h-11 w-auto shrink-0 object-contain" />
                 </Link>
                 <div className="flex h-full items-center justify-between px-5 md:px-6" style={contentStyle}>
                     <div className="text-gray-700 dark:text-slate-200">Loading...</div>
@@ -65,7 +66,7 @@ export default function Topbar({ sidebarOpen, setSidebarOpen }: TopbarProps) {
             style={headerStyle}
         >
             <Link href={route('dashboard')} className="absolute left-0 top-0 flex h-16 w-[190px] items-center px-6">
-                <img src="/images/jai.jpg" alt="SIPLAN" className="h-11 w-auto shrink-0 object-contain" />
+                <img src={asset('images/jai.jpg')} alt="SIPLAN" className="h-11 w-auto shrink-0 object-contain" />
             </Link>
             <div className="flex h-full items-center justify-between px-5 md:px-6" style={contentStyle}>
                 <div className="flex items-center gap-5">
