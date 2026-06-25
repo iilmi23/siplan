@@ -358,24 +358,34 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
         if (!routeName) return false;
 
         try {
-            const currentUrl = url.split('?')[0];
+            const getBasePath = (): string => {
+                if (typeof window !== 'undefined') {
+                    const pathname = window.location.pathname;
+                    if (pathname.toLowerCase().startsWith('/siplan/public')) {
+                        return pathname.substring(0, 14);
+                    }
+                }
+                return '';
+            };
+            const base = getBasePath();
+
+            let currentUrl = url.split('?')[0];
+            if (base && currentUrl.startsWith(base)) {
+                currentUrl = currentUrl.substring(base.length);
+            }
+            if (!currentUrl.startsWith('/')) {
+                currentUrl = '/' + currentUrl;
+            }
 
             let routeUrl;
             try {
                 if (typeof window.route === 'function') {
                     routeUrl = window.route(routeName).split('?')[0];
-                    const getBasePath = (): string => {
-                        if (typeof window !== 'undefined') {
-                            const pathname = window.location.pathname;
-                            if (pathname.toLowerCase().startsWith('/siplan/public')) {
-                                return pathname.substring(0, 14);
-                            }
-                        }
-                        return '';
-                    };
-                    const base = getBasePath();
                     if (base && routeUrl.startsWith(base)) {
                         routeUrl = routeUrl.substring(base.length);
+                    }
+                    if (!routeUrl.startsWith('/')) {
+                        routeUrl = '/' + routeUrl;
                     }
                 } else {
                     return false;
